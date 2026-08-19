@@ -1,47 +1,52 @@
-# Svelte + TS + Vite
+# causal-impact-wasm
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+[Google's CausalImpact](https://google.github.io/CausalImpact/) methodology —
+counterfactual time-series inference for "what would y have been without the
+intervention?" — running entirely in the browser. Upload a CSV, pick the
+intervention point, get the classic three-panel plot, summary table, and prose
+report. No server, no data upload: the model fits in a web worker via
+[Pyodide](https://pyodide.org).
 
-## Recommended IDE Setup
+## How it works
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+- **Engine**: a vendored, patched copy of
+  [dafiti/causalimpact](https://github.com/dafiti/causalimpact) (`pycausalimpact`
+  0.1.1, Apache 2.0) in `py/causalimpact/`, updated for numpy 2.4 / pandas 3.0 /
+  statsmodels 0.14 — the exact versions Pyodide 314.0.5 ships. It fits a
+  structural time-series model (local level + covariate regression, optional
+  seasonality) with `statsmodels.UnobservedComponents` and derives pointwise and
+  cumulative effects, credible intervals, and a tail-area p-value from simulated
+  forecasts.
+- **Bridge**: `py/runner.py` is a JSON-in/JSON-out entrypoint; periods are
+  integer positions (the JS side owns date semantics). Runs are deterministic
+  given a seed.
+- **App**: Svelte 5 + Vite + TypeScript; uPlot charts with synced cursors;
+  Pyodide loaded from the jsDelivr CDN inside a module worker (~20 MB one-time,
+  cached by the browser).
 
-## Need an official Svelte framework?
+### Fidelity vs the R package
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+The R original samples a Bayesian spike-and-slab model by MCMC (`bsts`). This
+port — like `pycausalimpact` — fits by maximum likelihood via Kalman filtering.
+Point estimates and intervals are close in practice but not identical. (Running
+the R package itself in the browser is currently impossible: `bsts` has no
+WebAssembly build in the webR repository.)
 
-## Technical considerations
+## Development
 
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```sh
+npm install && npm run dev        # app
+cd py && uv venv --python 3.14 .venv \
+  && VIRTUAL_ENV=.venv uv pip install \
+     numpy==2.4.6 scipy==1.18.0 pandas==3.0.2 statsmodels==0.14.6 jinja2==3.1.6 pytest
+.venv/bin/python -m pytest tests/  # engine tests, natively, on Pyodide-pinned versions
 ```
+
+The Python pins mirror `pyodide-lock.json` for the Pyodide version in
+`src/lib/worker/pyodide.worker.ts` — keep them in lockstep when bumping Pyodide.
+
+Deploys are manual: `gh workflow run deploy-pages`.
+
+## License
+
+Apache 2.0. Vendored `causalimpact` package © Google Inc. / Dafiti, Apache 2.0.
