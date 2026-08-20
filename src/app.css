@@ -2,6 +2,7 @@
   color-scheme: light;
   --page: #f9f9f7;
   --surface: #fcfcfb;
+  --chart-bg: #fcfcfb;
   --ink: #0b0b0b;
   --ink-secondary: #52514e;
   --ink-muted: #898781;
@@ -24,6 +25,7 @@
     color-scheme: dark;
     --page: #0d0d0d;
     --surface: #1a1a19;
+    --chart-bg: #1a1a19;
     --ink: #ffffff;
     --ink-secondary: #c3c2b7;
     --ink-muted: #898781;
@@ -46,6 +48,7 @@
   color-scheme: dark;
   --page: #0d0d0d;
   --surface: #1a1a19;
+  --chart-bg: #1a1a19;
   --ink: #ffffff;
   --ink-secondary: #c3c2b7;
   --ink-muted: #898781;
@@ -199,6 +202,12 @@ table.data td:first-child {
 }
 
 /* uPlot chrome */
+.chart-panel {
+  background: var(--chart-bg);
+  border-radius: 6px;
+  padding: 6px 4px 2px;
+}
+
 .uplot {
   font-family: inherit;
 }

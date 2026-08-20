@@ -49,7 +49,7 @@
   for impact.
 </p>
 
-<div bind:this={chartEl}></div>
+<div class="chart-panel" bind:this={chartEl}></div>
 
 <div class="row">
   <label class="field">

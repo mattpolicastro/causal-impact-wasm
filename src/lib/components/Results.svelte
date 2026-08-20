@@ -1,8 +1,17 @@
 <script lang="ts">
+  import {
+    applyPreset,
+    appearance,
+    chartColors,
+    PRESETS,
+    resetChartColors,
+    setChartColor,
+  } from '../appearance.svelte'
   import { mountChart, theme, token } from '../charts.svelte'
   import { download, toCsv } from '../data'
   import { assess } from '../diagnostics'
   import { chartsToSvg } from '../svgExport'
+  import ColorField from './ColorField.svelte'
   import type { AnalysisConfig, AnalysisResult, PreparedData } from '../types'
   import DiagnosticsPanel from './DiagnosticsPanel.svelte'
 
@@ -19,6 +28,11 @@
   } = $props()
 
   const diagnostics = $derived(assess(data, config, result, placebo))
+  const colors = $derived.by(() => {
+    void theme.version
+    void appearance.custom
+    return chartColors()
+  })
 
   let panelOriginal: HTMLDivElement
   let panelPointwise: HTMLDivElement
@@ -155,30 +169,33 @@
     download('causal-impact-inferences.csv', toCsv(['index', 'observed', ...cols], rows))
   }
 
-  function exportPng() {
-    const canvases = [panelOriginal, panelPointwise, panelCumulative].map(
-      (el) => el.querySelector('canvas')!,
-    )
-    const pad = 16
-    const width = Math.max(...canvases.map((c) => c.width))
-    const height = canvases.reduce((sum, c) => sum + c.height + pad, pad)
-    const out = document.createElement('canvas')
-    out.width = width
-    out.height = height
-    const ctx = out.getContext('2d')!
-    ctx.fillStyle = token('--surface')
-    ctx.fillRect(0, 0, width, height)
-    let y = pad
-    for (const c of canvases) {
-      ctx.drawImage(c, 0, y)
-      y += c.height + pad
-    }
-    out.toBlob((blob) => blob && download('causal-impact-charts.png', blob, 'image/png'))
+  function slug(title: string): string {
+    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   }
 
-  function exportSvg() {
-    const svg = chartsToSvg(panels, data.index.labels)
-    download('causal-impact-charts.svg', svg, 'image/svg+xml')
+  function exportPanelSvg(i: number) {
+    download(
+      `causal-impact-${slug(panels[i].title)}.svg`,
+      chartsToSvg([panels[i]], data.index.labels),
+      'image/svg+xml',
+    )
+  }
+
+  function exportPanelPng(i: number) {
+    const els = [panelOriginal, panelPointwise, panelCumulative]
+    const canvas = els[i].querySelector('canvas')!
+    const pad = 16
+    const out = document.createElement('canvas')
+    out.width = canvas.width + pad * 2
+    out.height = canvas.height + pad * 2
+    const ctx = out.getContext('2d')!
+    ctx.fillStyle = colors.background
+    ctx.fillRect(0, 0, out.width, out.height)
+    ctx.drawImage(canvas, pad, pad)
+    out.toBlob(
+      (blob) =>
+        blob && download(`causal-impact-${slug(panels[i].title)}.png`, blob, 'image/png'),
+    )
   }
 
   async function copyReport() {
@@ -187,6 +204,42 @@
     setTimeout(() => (copied = false), 1500)
   }
 </script>
+
+<div class="chart-style">
+  <h3>Chart colors</h3>
+  <div class="chart-style-row">
+    <ColorField
+      label="Background"
+      value={colors.background}
+      onchange={(hex) => setChartColor('background', hex)}
+    />
+    <ColorField
+      label="Observed"
+      value={colors.observed}
+      onchange={(hex) => setChartColor('observed', hex)}
+    />
+    <ColorField
+      label="Counterfactual"
+      value={colors.counterfactual}
+      onchange={(hex) => setChartColor('counterfactual', hex)}
+    />
+    <div class="presets">
+      {#each Object.entries(PRESETS) as [id, p] (id)}
+        <button
+          class="preset"
+          title={p.label}
+          onclick={() => applyPreset(id as keyof typeof PRESETS)}
+        >
+          <span style:background={p[theme.dark ? 'dark' : 'light'][0]}></span>
+          <span style:background={p[theme.dark ? 'dark' : 'light'][1]}></span>
+        </button>
+      {/each}
+      {#if appearance.custom}
+        <button class="reset" onclick={resetChartColors}>Reset</button>
+      {/if}
+    </div>
+  </div>
+</div>
 
 <DiagnosticsPanel items={diagnostics} />
 
@@ -215,11 +268,23 @@
 </div>
 
 <h3>Observed vs counterfactual</h3>
-<div bind:this={panelOriginal}></div>
+<div class="chart-panel" bind:this={panelOriginal}></div>
+<div class="chart-actions">
+  <button onclick={() => exportPanelPng(0)}>PNG</button>
+  <button onclick={() => exportPanelSvg(0)}>SVG</button>
+</div>
 <h3>Pointwise effect</h3>
-<div bind:this={panelPointwise}></div>
+<div class="chart-panel" bind:this={panelPointwise}></div>
+<div class="chart-actions">
+  <button onclick={() => exportPanelPng(1)}>PNG</button>
+  <button onclick={() => exportPanelSvg(1)}>SVG</button>
+</div>
 <h3>Cumulative effect</h3>
-<div bind:this={panelCumulative}></div>
+<div class="chart-panel" bind:this={panelCumulative}></div>
+<div class="chart-actions">
+  <button onclick={() => exportPanelPng(2)}>PNG</button>
+  <button onclick={() => exportPanelSvg(2)}>SVG</button>
+</div>
 
 <h3>Summary</h3>
 <div class="table-wrap">
@@ -281,8 +346,6 @@
 
 <div class="exports">
   <button onclick={exportCsv}>Download inferences CSV</button>
-  <button onclick={exportPng}>Download charts PNG</button>
-  <button onclick={exportSvg}>Download charts SVG</button>
   <button onclick={copyReport}>{copied ? 'Copied ✓' : 'Copy report'}</button>
 </div>
 
@@ -348,6 +411,68 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 20px;
+  }
+
+  .chart-style {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+  }
+
+  .chart-style h3 {
+    margin: 0 0 8px;
+  }
+
+  .chart-style-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: end;
+  }
+
+  .presets {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+
+  .preset {
+    display: inline-flex;
+    gap: 0;
+    padding: 3px;
+    border-radius: 6px;
+    line-height: 0;
+  }
+
+  .preset span {
+    width: 12px;
+    height: 18px;
+  }
+
+  .preset span:first-child {
+    border-radius: 3px 0 0 3px;
+  }
+
+  .preset span:last-child {
+    border-radius: 0 3px 3px 0;
+  }
+
+  .reset {
+    font-size: 12.5px;
+    padding: 4px 10px;
+  }
+
+  .chart-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .chart-actions button {
+    font-size: 12px;
+    padding: 3px 10px;
   }
 
   .inclusion span {

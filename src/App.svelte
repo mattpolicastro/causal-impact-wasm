@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appearance, initAppearance, PALETTES } from './lib/appearance.svelte'
+  import { appearance, initAppearance } from './lib/appearance.svelte'
   import ColumnMapper from './lib/components/ColumnMapper.svelte'
   import DataIngest from './lib/components/DataIngest.svelte'
   import ModelConfig from './lib/components/ModelConfig.svelte'
@@ -118,14 +118,6 @@
           <option value="system">system</option>
           <option value="light">light</option>
           <option value="dark">dark</option>
-        </select>
-      </label>
-      <label>
-        Colors
-        <select bind:value={appearance.palette}>
-          {#each Object.entries(PALETTES) as [id, p] (id)}
-            <option value={id}>{p.label}</option>
-          {/each}
         </select>
       </label>
     </div>

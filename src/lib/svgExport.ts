@@ -177,7 +177,7 @@ export function chartsToSvg(
   xLabels: string[],
 ): string {
   const colors = {
-    surface: token('--surface'),
+    surface: token('--chart-bg'),
     inkSecondary: token('--ink-secondary'),
     inkMuted: token('--ink-muted'),
     grid: token('--grid'),
