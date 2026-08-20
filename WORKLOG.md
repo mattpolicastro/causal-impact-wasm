@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-08-19 (evening) — validation: R parity, fixtures, stress harness
+
+- **R parity (gold standard)**: compiled R CausalImpact 1.4.1 + bsts 0.9.11
+  (brew formula R needs source builds — the `r-app` cask would've taken CRAN
+  binaries; needs interactive sudo). `tests/fixtures/generate_r_reference.R`
+  runs the real R package on four known datasets (classic ARMA null, google
+  example, Dafiti comparison data, VW dieselgate — fixtures from tfcausalimpact,
+  Apache 2.0); `test_r_parity.py` checks both engines against it. **All 8 pass**;
+  on dieselgate all three implementations land on ≈ −25%. `r_reference.json`
+  is committed so parity runs without R.
+- **Stress harness** (`py/stress/harness.py`): 8 scenarios × 100 reps × both
+  engines, measuring FPR/power/coverage plus UI-guardrail catch rates. Findings:
+  - Bayes is calibrated (FPR 1–10%, coverage 0.90–0.99); MLE is not in the bad
+    regimes (junk covariates FPR **54%**, short pre-period 37%) — confirms the
+    default-engine choice.
+  - Trend-only (no covariates) on drifting data is invalid in *both* engines
+    (FPR ~65–73%) — but guards flag it 100% of the time.
+  - Guardrails after recalibration: flag ~17% of healthy runs, 61–100% of bad
+    regimes; "protected FPR" (runs the panel lets through) ≤ 3% for bayes.
+- **Guardrail recalibration from the data**: placebo window now mirrors the
+  real post-period length (half/half split was harsher than the real analysis
+  and over-fired); R² demoted from hard gate to info/caution (fail only < 0.3)
+  because low R² widens intervals rather than breaking calibration — the
+  seasonal-misspec scenario keeps FPR at 4% despite bad fit.
+- Added VW dieselgate as a third in-app sample dataset.
+- Dev server: vite `allowedHosts` now includes mac-studio / mac-studio.local.
+
 ## 2026-08-19 (later) — v2: Bayesian engine + guardrails
 
 - **Track 2**: pure-numpy Gibbs sampler (`py/bayes.py`) — FFBS local level,

@@ -5,4 +5,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 export default defineConfig({
   base: process.env.GITHUB_PAGES ? '/causal-impact-wasm/' : '/',
   plugins: [svelte()],
+  server: {
+    host: true,
+    allowedHosts: ['mac-studio', 'mac-studio.local'],
+  },
 })

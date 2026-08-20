@@ -47,7 +47,13 @@ export function prePeriodFit(
 export function placeboConfig(config: AnalysisConfig): AnalysisConfig | null {
   const preLength = config.t0 - config.preStart
   if (preLength < 20) return null
-  const fakeT0 = config.preStart + Math.floor(preLength / 2)
+  // The placebo window mirrors the real post-period length (capped at a third
+  // of the pre-period) so the check is as hard as the real analysis — no
+  // harder. A half/half split trains on too little and evaluates too long,
+  // which makes the placebo fail on perfectly healthy data.
+  const postLength = config.postEnd - config.t0 + 1
+  const window = Math.max(5, Math.min(postLength, Math.floor(preLength / 3)))
+  const fakeT0 = config.t0 - window
   return { ...config, t0: fakeT0, postEnd: config.t0 - 1 }
 }
 
@@ -66,29 +72,33 @@ export function assess(
   const preLength = config.t0 - config.preStart
   const nCov = Object.keys(data.covariates).length
 
+  // Low R² mostly reflects noisy data, which the intervals already absorb by
+  // widening (verified in the stress harness: misspecified-fit scenarios keep
+  // nominal false-positive rates). It only becomes a problem when the model
+  // explains almost nothing.
   const fit = prePeriodFit(data, config, result)
   if (fit) {
     const pct = (fit.r2 * 100).toFixed(0)
-    if (fit.r2 >= 0.8) {
+    if (fit.r2 >= 0.7) {
       items.push({
         id: 'fit',
         status: 'pass',
         title: 'Model tracks the pre-period well',
         detail: `The counterfactual explains ${pct}% of the variation before the intervention (R² = ${fit.r2.toFixed(2)}).`,
       })
-    } else if (fit.r2 >= 0.5) {
+    } else if (fit.r2 >= 0.3) {
       items.push({
         id: 'fit',
-        status: 'warn',
-        title: 'Mediocre pre-period fit',
-        detail: `The counterfactual explains only ${pct}% of pre-intervention variation. The effect estimate inherits that noise — treat the size of the effect as rough.`,
+        status: 'info',
+        title: 'Noisy pre-period fit',
+        detail: `The counterfactual explains ${pct}% of pre-intervention variation. That mostly means your metric is noisy: intervals widen to compensate, so the verdict stays honest, but small effects will be hard to detect.`,
       })
     } else {
       items.push({
         id: 'fit',
         status: 'fail',
-        title: 'Poor pre-period fit',
-        detail: `The model can't explain your metric even before the intervention (R² = ${fit.r2.toFixed(2)}). Its "what would have happened" baseline is unreliable — consider better control series or a longer pre-period.`,
+        title: 'Model explains almost nothing',
+        detail: `R² = ${fit.r2.toFixed(2)} before the intervention — the counterfactual is barely better than guessing. Consider control series that actually track your metric, or a longer pre-period.`,
       })
     }
   }

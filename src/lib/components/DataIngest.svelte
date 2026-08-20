@@ -14,6 +14,7 @@
   const samples = [
     { file: 'ad-campaign.csv', label: 'Ad campaign (daily, 2 covariates)' },
     { file: 'classic-arma.csv', label: 'Classic simulated series (y, X)' },
+    { file: 'vw-dieselgate.csv', label: 'VW emissions scandal (weekly stock)' },
   ]
 
   function load(text: string, name: string) {

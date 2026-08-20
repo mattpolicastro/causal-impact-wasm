@@ -27,7 +27,12 @@ wording or thresholds without deliberate review.
 
 ## Testing
 
-- Engine: `cd py && .venv/bin/python -m pytest tests/`
+- Engine: `cd py && .venv/bin/python -m pytest tests/` (`-m slow` adds the
+  null-calibration sweep; `test_r_parity.py` runs only if
+  `tests/fixtures/r_reference.json` exists — regenerate it with
+  `Rscript tests/fixtures/generate_r_reference.R` after engine changes)
+- Error rates: `py/.venv/bin/python py/stress/harness.py --reps 100` → rewrites
+  `py/stress/REPORT.md`; run after any change to either engine's inference
 - App: `npm run check` (svelte-check), `npm run build`
 - Browser e2e is manual; Chrome on this machine cannot reach loopback — use the
   LAN IP (`ipconfig getifaddr en0`) with `npm run dev -- --host`.

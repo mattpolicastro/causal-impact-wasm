@@ -57,6 +57,23 @@ The Python pins mirror `pyodide-lock.json` for the Pyodide version in
 
 Deploys are manual: `gh workflow run deploy-pages`.
 
+### Validation
+
+- `py/tests/` — unit + recovery tests for both engines (run on every change).
+- `py/stress/harness.py` — error-rate stress harness: simulation grids with
+  known ground truth measuring false-positive rate, power, CI coverage, and how
+  often the UI's guardrails catch the bad regimes. Results in
+  `py/stress/REPORT.md`.
+- `py/tests/fixtures/` — known datasets from the CausalImpact ecosystem
+  (classic ARMA, Dafiti's comparison data, VW dieselgate, google example;
+  sourced from [tfcausalimpact](https://github.com/WillianFuks/tfcausalimpact)'s
+  test fixtures, Apache 2.0) plus `generate_r_reference.R`, which runs the real
+  R package on them. `test_r_parity.py` checks both engines against R's
+  verdicts and intervals; the committed `r_reference.json` was generated with
+  R CausalImpact 1.4.1 / bsts 0.9.11. Both engines pass on all four datasets —
+  including the VW dieselgate case, where all three implementations land on
+  ≈ −25% with overlapping intervals.
+
 ## License
 
 Apache 2.0. Vendored `causalimpact` package © Google Inc. / Dafiti, Apache 2.0.

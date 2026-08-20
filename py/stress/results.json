@@ -1,0 +1,280 @@
+{
+ "reps": 100,
+ "summary": [
+  {
+   "scenario": "effect-10pct",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.96,
+   "mae": 0.004935112844992836,
+   "flag_rate": 0.17,
+   "protected_sig_rate": 1.0,
+   "n_clean": 83
+  },
+  {
+   "scenario": "effect-10pct",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.81,
+   "mae": 0.004872076115924806,
+   "flag_rate": 0.35,
+   "protected_sig_rate": 1.0,
+   "n_clean": 65
+  },
+  {
+   "scenario": "effect-10pct-short-pre",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.9,
+   "mae": 0.01061441443295552,
+   "flag_rate": 0.61,
+   "protected_sig_rate": 1.0,
+   "n_clean": 39
+  },
+  {
+   "scenario": "effect-10pct-short-pre",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.61,
+   "mae": 0.008971010327371555,
+   "flag_rate": 0.82,
+   "protected_sig_rate": 1.0,
+   "n_clean": 18
+  },
+  {
+   "scenario": "effect-5pct",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.96,
+   "mae": 0.0047107895338567825,
+   "flag_rate": 0.17,
+   "protected_sig_rate": 1.0,
+   "n_clean": 83
+  },
+  {
+   "scenario": "effect-5pct",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 1.0,
+   "metric": "power",
+   "coverage": 0.84,
+   "mae": 0.004650618110655466,
+   "flag_rate": 0.35,
+   "protected_sig_rate": 1.0,
+   "n_clean": 65
+  },
+  {
+   "scenario": "null-easy",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 0.04,
+   "metric": "FPR",
+   "coverage": 0.96,
+   "mae": 0.004486466222720732,
+   "flag_rate": 0.17,
+   "protected_sig_rate": 0.024096385542168676,
+   "n_clean": 83
+  },
+  {
+   "scenario": "null-easy",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 0.15,
+   "metric": "FPR",
+   "coverage": 0.85,
+   "mae": 0.004429160105386158,
+   "flag_rate": 0.35,
+   "protected_sig_rate": 0.12307692307692308,
+   "n_clean": 65
+  },
+  {
+   "scenario": "null-junk-covariates",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 0.01,
+   "metric": "FPR",
+   "coverage": 0.99,
+   "mae": 0.004502617573016573,
+   "flag_rate": 0.01,
+   "protected_sig_rate": 0.010101010101010102,
+   "n_clean": 99
+  },
+  {
+   "scenario": "null-junk-covariates",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 0.54,
+   "metric": "FPR",
+   "coverage": 0.46,
+   "mae": 0.009991943917996668,
+   "flag_rate": 0.58,
+   "protected_sig_rate": 0.5714285714285714,
+   "n_clean": 42
+  },
+  {
+   "scenario": "null-no-covariates",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 0.65,
+   "metric": "FPR",
+   "coverage": 0.35,
+   "mae": 0.01451620791813787,
+   "flag_rate": 1.0,
+   "protected_sig_rate": null,
+   "n_clean": 0
+  },
+  {
+   "scenario": "null-no-covariates",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 0.73,
+   "metric": "FPR",
+   "coverage": 0.27,
+   "mae": 0.01606926825700356,
+   "flag_rate": 1.0,
+   "protected_sig_rate": null,
+   "n_clean": 0
+  },
+  {
+   "scenario": "null-seasonal-misspec",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 0.04,
+   "metric": "FPR",
+   "coverage": 0.96,
+   "mae": 0.008589060734086903,
+   "flag_rate": 0.84,
+   "protected_sig_rate": 0.0625,
+   "n_clean": 16
+  },
+  {
+   "scenario": "null-seasonal-misspec",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 0.04,
+   "metric": "FPR",
+   "coverage": 0.96,
+   "mae": 0.006378715089156207,
+   "flag_rate": 0.91,
+   "protected_sig_rate": 0.1111111111111111,
+   "n_clean": 9
+  },
+  {
+   "scenario": "null-short-pre",
+   "engine": "bayes",
+   "n": 100,
+   "sig_rate": 0.1,
+   "metric": "FPR",
+   "coverage": 0.9,
+   "mae": 0.009649467666323245,
+   "flag_rate": 0.61,
+   "protected_sig_rate": 0.02564102564102564,
+   "n_clean": 39
+  },
+  {
+   "scenario": "null-short-pre",
+   "engine": "mle",
+   "n": 100,
+   "sig_rate": 0.37,
+   "metric": "FPR",
+   "coverage": 0.63,
+   "mae": 0.008155463933974153,
+   "flag_rate": 0.82,
+   "protected_sig_rate": 0.4444444444444444,
+   "n_clean": 18
+  }
+ ],
+ "errors": [],
+ "scenarios": [
+  {
+   "name": "null-easy",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.0,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "No effect, healthy setup: FPR should be ~alpha."
+  },
+  {
+   "name": "null-short-pre",
+   "n_pre": 30,
+   "n_post": 30,
+   "effect": 0.0,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "No effect, short pre-period: classic over-confidence regime."
+  },
+  {
+   "name": "null-junk-covariates",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.0,
+   "n_real_cov": 1,
+   "n_junk_cov": 8,
+   "seasonal_misspec": false,
+   "description": "No effect, 1 real + 8 junk controls: overfitting regime."
+  },
+  {
+   "name": "null-no-covariates",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.0,
+   "n_real_cov": 0,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "No effect, trend-only counterfactual."
+  },
+  {
+   "name": "null-seasonal-misspec",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.0,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": true,
+   "description": "No effect, weekly cycle the model cannot express: fit check should flag these."
+  },
+  {
+   "name": "effect-5pct",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.05,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "True +5% effect: power and coverage."
+  },
+  {
+   "name": "effect-10pct",
+   "n_pre": 100,
+   "n_post": 30,
+   "effect": 0.1,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "True +10% effect: power and coverage."
+  },
+  {
+   "name": "effect-10pct-short-pre",
+   "n_pre": 30,
+   "n_post": 30,
+   "effect": 0.1,
+   "n_real_cov": 2,
+   "n_junk_cov": 0,
+   "seasonal_misspec": false,
+   "description": "True +10% effect with a short pre-period."
+  }
+ ]
+}
