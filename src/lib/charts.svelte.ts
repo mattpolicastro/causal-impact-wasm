@@ -1,13 +1,8 @@
 import uPlot from 'uplot'
 
+// Bumped by the appearance module whenever theme mode or palette changes;
+// chart-mounting effects depend on `version` to rebuild with fresh tokens.
 export const theme = $state({ version: 0, dark: false })
-
-const media = window.matchMedia('(prefers-color-scheme: dark)')
-theme.dark = media.matches
-media.addEventListener('change', () => {
-  theme.dark = media.matches
-  theme.version += 1
-})
 
 export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()

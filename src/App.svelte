@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appearance, initAppearance, PALETTES } from './lib/appearance.svelte'
   import ColumnMapper from './lib/components/ColumnMapper.svelte'
   import DataIngest from './lib/components/DataIngest.svelte'
   import ModelConfig from './lib/components/ModelConfig.svelte'
@@ -26,6 +27,7 @@
 
   // Pyodide + the numeric stack is a ~20MB download; start it immediately.
   warmUp()
+  initAppearance()
 
   const preparation = $derived.by(() => {
     if (!table || !mapping) return null
@@ -105,9 +107,29 @@
       no data leaves this page.
     </p>
   </div>
-  <span class="status" class:ready={engine.stage === 'ready'}>
-    {engine.running ? 'fitting model…' : stageLabel[engine.stage]}
-  </span>
+  <div class="header-right">
+    <span class="status" class:ready={engine.stage === 'ready'}>
+      {engine.running ? 'fitting model…' : stageLabel[engine.stage]}
+    </span>
+    <div class="appearance">
+      <label>
+        Theme
+        <select bind:value={appearance.mode}>
+          <option value="system">system</option>
+          <option value="light">light</option>
+          <option value="dark">dark</option>
+        </select>
+      </label>
+      <label>
+        Colors
+        <select bind:value={appearance.palette}>
+          {#each Object.entries(PALETTES) as [id, p] (id)}
+            <option value={id}>{p.label}</option>
+          {/each}
+        </select>
+      </label>
+    </div>
+  </div>
 </header>
 
 <section class="card">
@@ -173,6 +195,31 @@
 
   header p {
     margin: 4px 0 0;
+  }
+
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: end;
+    gap: 8px;
+  }
+
+  .appearance {
+    display: flex;
+    gap: 10px;
+  }
+
+  .appearance label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .appearance select {
+    font-size: 12px;
+    padding: 2px 5px;
   }
 
   .status {

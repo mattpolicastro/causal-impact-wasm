@@ -2,6 +2,7 @@
   import { mountChart, theme, token } from '../charts.svelte'
   import { download, toCsv } from '../data'
   import { assess } from '../diagnostics'
+  import { chartsToSvg } from '../svgExport'
   import type { AnalysisConfig, AnalysisResult, PreparedData } from '../types'
   import DiagnosticsPanel from './DiagnosticsPanel.svelte'
 
@@ -65,7 +66,7 @@
     return `[${f(Math.min(lo, hi))}, ${f(Math.max(lo, hi))}]`
   }
 
-  $effect(() => {
+  const panels = $derived.by(() => {
     void theme.version
     const xs = data.index.xs
     const isDate = data.index.type === 'date'
@@ -74,58 +75,73 @@
     const observed = token('--series-observed')
     const model = token('--series-model')
     const band = token('--series-model-band')
-
-    const destroys = [
-      mountChart(panelOriginal, {
-        xs,
-        isDate,
-        t0x,
-        syncKey,
-        series: [
-          { label: 'observed', values: data.y, color: observed },
-          { label: 'counterfactual', values: s.preds, color: model, dash: [6, 4] },
-        ],
-        bands: [{ label: ciLabel, upper: s.preds_upper, lower: s.preds_lower, color: band }],
-      }),
-      mountChart(panelPointwise, {
-        xs,
-        isDate,
-        t0x,
-        syncKey,
-        zeroLine: true,
-        height: 190,
-        series: [
-          { label: 'pointwise effect', values: s.point_effects, color: model },
-        ],
-        bands: [
-          {
-            label: ciLabel,
-            upper: s.point_effects_upper,
-            lower: s.point_effects_lower,
-            color: band,
-          },
-        ],
-      }),
-      mountChart(panelCumulative, {
-        xs,
-        isDate,
-        t0x,
-        syncKey,
-        zeroLine: true,
-        height: 190,
-        series: [
-          { label: 'cumulative effect', values: s.post_cum_effects, color: model },
-        ],
-        bands: [
-          {
-            label: ciLabel,
-            upper: s.post_cum_effects_upper,
-            lower: s.post_cum_effects_lower,
-            color: band,
-          },
-        ],
-      }),
+    return [
+      {
+        title: 'Observed vs counterfactual',
+        spec: {
+          xs,
+          isDate,
+          t0x,
+          syncKey,
+          series: [
+            { label: 'observed', values: data.y, color: observed },
+            { label: 'counterfactual', values: s.preds, color: model, dash: [6, 4] },
+          ],
+          bands: [
+            { label: ciLabel, upper: s.preds_upper, lower: s.preds_lower, color: band },
+          ],
+        },
+      },
+      {
+        title: 'Pointwise effect',
+        spec: {
+          xs,
+          isDate,
+          t0x,
+          syncKey,
+          zeroLine: true,
+          height: 190,
+          series: [
+            { label: 'pointwise effect', values: s.point_effects, color: model },
+          ],
+          bands: [
+            {
+              label: ciLabel,
+              upper: s.point_effects_upper,
+              lower: s.point_effects_lower,
+              color: band,
+            },
+          ],
+        },
+      },
+      {
+        title: 'Cumulative effect',
+        spec: {
+          xs,
+          isDate,
+          t0x,
+          syncKey,
+          zeroLine: true,
+          height: 190,
+          series: [
+            { label: 'cumulative effect', values: s.post_cum_effects, color: model },
+          ],
+          bands: [
+            {
+              label: ciLabel,
+              upper: s.post_cum_effects_upper,
+              lower: s.post_cum_effects_lower,
+              color: band,
+            },
+          ],
+        },
+      },
     ]
+  })
+
+  $effect(() => {
+    const els = [panelOriginal, panelPointwise, panelCumulative]
+    const destroys = panels.map((p, i) => mountChart(els[i], p.spec))
     return () => destroys.forEach((d) => d())
   })
 
@@ -158,6 +174,11 @@
       y += c.height + pad
     }
     out.toBlob((blob) => blob && download('causal-impact-charts.png', blob, 'image/png'))
+  }
+
+  function exportSvg() {
+    const svg = chartsToSvg(panels, data.index.labels)
+    download('causal-impact-charts.svg', svg, 'image/svg+xml')
   }
 
   async function copyReport() {
@@ -261,6 +282,7 @@
 <div class="exports">
   <button onclick={exportCsv}>Download inferences CSV</button>
   <button onclick={exportPng}>Download charts PNG</button>
+  <button onclick={exportSvg}>Download charts SVG</button>
   <button onclick={copyReport}>{copied ? 'Copied ✓' : 'Copy report'}</button>
 </div>
 
