@@ -205,6 +205,32 @@
   }
 </script>
 
+<DiagnosticsPanel items={diagnostics} />
+
+<div class="tiles">
+  <div class="tile">
+    <h3>Relative effect (avg)</h3>
+    <p class="hero">{pct(avg.rel_effect)}</p>
+    <p class="muted">{ciLabel} {ci(avg.rel_effect_lower, avg.rel_effect_upper, pct)}</p>
+  </div>
+  <div class="tile">
+    <h3>Absolute effect (sum)</h3>
+    <p class="hero">{fmt(cum.abs_effect)}</p>
+    <p class="muted">
+      {ciLabel} {ci(cum.abs_effect_lower, cum.abs_effect_upper, (v) => fmt(v))}
+    </p>
+  </div>
+  <div class="tile">
+    <h3>Prob. of causal effect</h3>
+    <p class="hero">{probCausal > 99.9 ? '> 99.9' : probCausal.toFixed(1)}%</p>
+    <p class="muted">
+      posterior tail-area p {result.p_value < 0.001
+        ? '< 0.001'
+        : `= ${result.p_value.toFixed(3)}`}
+    </p>
+  </div>
+</div>
+
 <div class="chart-style">
   <h3>Chart colors</h3>
   <div class="chart-style-row">
@@ -238,32 +264,6 @@
         <button class="reset" onclick={resetChartColors}>Reset</button>
       {/if}
     </div>
-  </div>
-</div>
-
-<DiagnosticsPanel items={diagnostics} />
-
-<div class="tiles">
-  <div class="tile">
-    <h3>Relative effect (avg)</h3>
-    <p class="hero">{pct(avg.rel_effect)}</p>
-    <p class="muted">{ciLabel} {ci(avg.rel_effect_lower, avg.rel_effect_upper, pct)}</p>
-  </div>
-  <div class="tile">
-    <h3>Absolute effect (sum)</h3>
-    <p class="hero">{fmt(cum.abs_effect)}</p>
-    <p class="muted">
-      {ciLabel} {ci(cum.abs_effect_lower, cum.abs_effect_upper, (v) => fmt(v))}
-    </p>
-  </div>
-  <div class="tile">
-    <h3>Prob. of causal effect</h3>
-    <p class="hero">{probCausal > 99.9 ? '> 99.9' : probCausal.toFixed(1)}%</p>
-    <p class="muted">
-      posterior tail-area p {result.p_value < 0.001
-        ? '< 0.001'
-        : `= ${result.p_value.toFixed(3)}`}
-    </p>
   </div>
 </div>
 
