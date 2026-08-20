@@ -231,59 +231,61 @@
   </div>
 </div>
 
-<div class="chart-style">
-  <h3>Chart colors</h3>
-  <div class="chart-style-row">
-    <ColorField
-      label="Background"
-      value={colors.background}
-      onchange={(hex) => setChartColor('background', hex)}
-    />
-    <ColorField
-      label="Observed"
-      value={colors.observed}
-      onchange={(hex) => setChartColor('observed', hex)}
-    />
-    <ColorField
-      label="Counterfactual"
-      value={colors.counterfactual}
-      onchange={(hex) => setChartColor('counterfactual', hex)}
-    />
-    <div class="presets">
-      {#each Object.entries(PRESETS) as [id, p] (id)}
-        <button
-          class="preset"
-          title={p.label}
-          onclick={() => applyPreset(id as keyof typeof PRESETS)}
-        >
-          <span style:background={p[theme.dark ? 'dark' : 'light'][0]}></span>
-          <span style:background={p[theme.dark ? 'dark' : 'light'][1]}></span>
-        </button>
-      {/each}
-      {#if appearance.custom}
-        <button class="reset" onclick={resetChartColors}>Reset</button>
-      {/if}
+<div class="viz-pane">
+  <div class="chart-style">
+    <h3>Chart colors</h3>
+    <div class="chart-style-row">
+      <ColorField
+        label="Background"
+        value={colors.background}
+        onchange={(hex) => setChartColor('background', hex)}
+      />
+      <ColorField
+        label="Observed"
+        value={colors.observed}
+        onchange={(hex) => setChartColor('observed', hex)}
+      />
+      <ColorField
+        label="Counterfactual"
+        value={colors.counterfactual}
+        onchange={(hex) => setChartColor('counterfactual', hex)}
+      />
+      <div class="presets">
+        {#each Object.entries(PRESETS) as [id, p] (id)}
+          <button
+            class="preset"
+            title={p.label}
+            onclick={() => applyPreset(id as keyof typeof PRESETS)}
+          >
+            <span style:background={p[theme.dark ? 'dark' : 'light'][0]}></span>
+            <span style:background={p[theme.dark ? 'dark' : 'light'][1]}></span>
+          </button>
+        {/each}
+        {#if appearance.custom}
+          <button class="reset" onclick={resetChartColors}>Reset</button>
+        {/if}
+      </div>
     </div>
   </div>
-</div>
 
-<h3>Observed vs counterfactual</h3>
-<div class="chart-panel" bind:this={panelOriginal}></div>
-<div class="chart-actions">
-  <button onclick={() => exportPanelPng(0)}>PNG</button>
-  <button onclick={() => exportPanelSvg(0)}>SVG</button>
-</div>
-<h3>Pointwise effect</h3>
-<div class="chart-panel" bind:this={panelPointwise}></div>
-<div class="chart-actions">
-  <button onclick={() => exportPanelPng(1)}>PNG</button>
-  <button onclick={() => exportPanelSvg(1)}>SVG</button>
-</div>
-<h3>Cumulative effect</h3>
-<div class="chart-panel" bind:this={panelCumulative}></div>
-<div class="chart-actions">
-  <button onclick={() => exportPanelPng(2)}>PNG</button>
-  <button onclick={() => exportPanelSvg(2)}>SVG</button>
+  <h3>Observed vs counterfactual</h3>
+  <div class="chart-panel" bind:this={panelOriginal}></div>
+  <div class="chart-actions">
+    <button onclick={() => exportPanelPng(0)}>PNG</button>
+    <button onclick={() => exportPanelSvg(0)}>SVG</button>
+  </div>
+  <h3>Pointwise effect</h3>
+  <div class="chart-panel" bind:this={panelPointwise}></div>
+  <div class="chart-actions">
+    <button onclick={() => exportPanelPng(1)}>PNG</button>
+    <button onclick={() => exportPanelSvg(1)}>SVG</button>
+  </div>
+  <h3>Cumulative effect</h3>
+  <div class="chart-panel" bind:this={panelCumulative}></div>
+  <div class="chart-actions">
+    <button onclick={() => exportPanelPng(2)}>PNG</button>
+    <button onclick={() => exportPanelSvg(2)}>SVG</button>
+  </div>
 </div>
 
 <h3>Summary</h3>
@@ -413,11 +415,21 @@
     margin-top: 20px;
   }
 
-  .chart-style {
+  .viz-pane {
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
+    border-radius: 10px;
+    padding: 14px 16px 12px;
+    margin-bottom: 20px;
+  }
+
+  .viz-pane > h3:first-of-type {
+    margin-top: 14px;
+  }
+
+  .chart-style {
+    padding-bottom: 14px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--grid);
   }
 
   .chart-style h3 {
