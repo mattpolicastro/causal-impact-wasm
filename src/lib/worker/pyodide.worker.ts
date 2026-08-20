@@ -8,6 +8,7 @@ import miscPy from '../../../py/causalimpact/misc.py?raw'
 import summaryPy from '../../../py/causalimpact/summary.py?raw'
 import reportTmpl from '../../../py/causalimpact/templates/report?raw'
 import summaryTmpl from '../../../py/causalimpact/templates/summary?raw'
+import bayesPy from '../../../py/bayes.py?raw'
 import runnerPy from '../../../py/runner.py?raw'
 
 const PYODIDE_VERSION = '314.0.5'
@@ -22,6 +23,7 @@ const FILES: Record<string, string> = {
   '/app/causalimpact/summary.py': summaryPy,
   '/app/causalimpact/templates/report': reportTmpl,
   '/app/causalimpact/templates/summary': summaryTmpl,
+  '/app/bayes.py': bayesPy,
   '/app/runner.py': runnerPy,
 }
 
@@ -29,7 +31,7 @@ function post(message: WorkerResponse) {
   self.postMessage(message)
 }
 
-type RunJson = (payload: string) => string
+type RunJson = (payload: string, progress?: (done: number, total: number) => void) => string
 
 let runJsonPromise: Promise<RunJson> | null = null
 
@@ -59,7 +61,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       post({ type: 'ready' })
       return
     }
-    const result = JSON.parse(runJson(JSON.stringify(message.payload)))
+    const result = JSON.parse(
+      runJson(JSON.stringify(message.payload), (done, total) =>
+        post({ type: 'progress', done, total }),
+      ),
+    )
     if (result.ok) {
       delete result.ok
       post({ type: 'result', result })

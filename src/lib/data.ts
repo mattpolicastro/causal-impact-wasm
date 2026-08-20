@@ -89,15 +89,19 @@ export function prepare(table: ParsedTable, mapping: Mapping): PreparedData {
 
 export function makeRunPayload(data: PreparedData, config: AnalysisConfig): RunPayload {
   return {
+    engine: config.engine,
     y: data.y,
     covariates: data.covariates,
     pre_period: [config.preStart, config.t0 - 1],
     post_period: [config.t0, config.postEnd],
     alpha: config.alpha,
     standardize: config.standardize,
-    ...(config.seasonPeriod ? { nseasons: [{ period: config.seasonPeriod }] } : {}),
-    prior_level_sd: config.priorLevelSd,
+    ...(config.engine === 'mle' && config.seasonPeriod
+      ? { nseasons: [{ period: config.seasonPeriod }] }
+      : {}),
+    prior_level_sd: config.engine === 'bayes' ? (config.priorLevelSd ?? 0.01) : config.priorLevelSd,
     n_sims: config.nSims,
+    niter: 1000,
     seed: config.seed,
   }
 }

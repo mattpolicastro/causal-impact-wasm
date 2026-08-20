@@ -22,14 +22,17 @@ export interface PreparedData {
   covariates: Record<string, number[]>
 }
 
+export type Engine = 'bayes' | 'mle'
+
 export interface AnalysisConfig {
+  engine: Engine
   preStart: number
   t0: number // first post-intervention index
   postEnd: number
   alpha: number
   standardize: boolean
   seasonPeriod: number | null
-  priorLevelSd: number | null // null = auto-optimize
+  priorLevelSd: number | null // null = auto-optimize (MLE engine only)
   nSims: number
   seed: number
 }
@@ -54,6 +57,8 @@ export interface AnalysisResult {
   alpha: number
   summary_text: string
   report: string
+  engine: Engine
+  inclusion_probs?: Record<string, number>
 }
 
 export type WorkerRequest =
@@ -61,6 +66,7 @@ export type WorkerRequest =
   | { type: 'run'; payload: RunPayload }
 
 export interface RunPayload {
+  engine: Engine
   y: number[]
   covariates: Record<string, number[]>
   pre_period: [number, number]
@@ -70,11 +76,13 @@ export interface RunPayload {
   nseasons?: { period: number }[]
   prior_level_sd: number | null
   n_sims: number
+  niter?: number
   seed: number
 }
 
 export type WorkerResponse =
   | { type: 'status'; stage: 'loading-runtime' | 'loading-packages' | 'installing' }
   | { type: 'ready' }
+  | { type: 'progress'; done: number; total: number }
   | { type: 'result'; result: AnalysisResult }
   | { type: 'error'; error: string }

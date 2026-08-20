@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-08-19 (later) — v2: Bayesian engine + guardrails
+
+- **Track 2**: pure-numpy Gibbs sampler (`py/bayes.py`) — FFBS local level,
+  SSVS spike-and-slab over covariates, conjugate variance updates, truncated
+  level-sd prior matching CausalImpact's convention (fraction of sd(y), df=32).
+  Deterministic given seed; ~300ms native / ~1-2s wasm for n=180, niter=1000.
+  Now the default engine; MLE remains as "fast approximation" (and the only
+  seasonal-capable engine). Reports posterior inclusion probabilities in UI.
+  Tests: effect recovery, null non-significance, junk-covariate pruning
+  (real X included ~100%, junk pruned), MLE agreement on easy data, null
+  calibration (40-sim false-positive smoke test, `-m slow`).
+- **Track 1**: automated sanity checks after every run (`src/lib/diagnostics.ts`
+  + DiagnosticsPanel): pre-period fit R², automatic placebo re-run with fake
+  intervention mid-pre-period, pre-period-length and covariate-count warnings,
+  marginal-significance caution, and a fixed note on unverifiable assumptions.
+  Panel sorts failures first and headlines "N problems found" for naive users.
+- Verified end-to-end in browser: Bayesian result matches native to the digit;
+  placebo auto-runs; the fit check correctly flagged unmodeled weekly
+  seasonality in the ad-campaign sample (R²=0.66 caution).
+- Next: systematic error-rate stress testing (false-positive/coverage sweeps).
+
 ## 2026-08-19 — Project bootstrap: CausalImpact in the browser
 
 - Researched feasibility: webR route is dead (`bsts`/`BoomSpikeSlab` have no wasm

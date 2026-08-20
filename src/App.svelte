@@ -5,6 +5,7 @@
   import PeriodPicker from './lib/components/PeriodPicker.svelte'
   import Results from './lib/components/Results.svelte'
   import { makeRunPayload, prepare } from './lib/data'
+  import { placeboConfig } from './lib/diagnostics'
   import { cancelRun, engine, runAnalysis, warmUp } from './lib/engine.svelte'
   import type {
     AnalysisConfig,
@@ -13,11 +14,14 @@
     ParsedTable,
   } from './lib/types'
 
+  type PlaceboState = AnalysisResult | 'pending' | 'skipped' | { error: string }
+
   let table = $state<ParsedTable | null>(null)
   let mapping = $state<Mapping | null>(null)
   let config = $state<AnalysisConfig | null>(null)
   let result = $state<AnalysisResult | null>(null)
   let resultConfig = $state<AnalysisConfig | null>(null)
+  let placebo = $state<PlaceboState>('skipped')
   let runError = $state<string | null>(null)
 
   // Pyodide + the numeric stack is a ~20MB download; start it immediately.
@@ -50,6 +54,7 @@
     const n = t.rows.length
     const t0 = Math.max(4, Math.floor(n * 0.7))
     config = {
+      engine: 'bayes',
       preStart: 0,
       t0,
       postEnd: n - 1,
@@ -66,14 +71,28 @@
     if (!prepared || !config) return
     runError = null
     result = null
+    const snapshot = $state.snapshot(config)
     try {
-      result = await runAnalysis(makeRunPayload(prepared, $state.snapshot(config)))
-      resultConfig = $state.snapshot(config)
+      result = await runAnalysis(makeRunPayload(prepared, snapshot))
+      resultConfig = snapshot
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (message !== 'Cancelled.' && !message.startsWith('Superseded')) {
         runError = message
       }
+      return
+    }
+    // Placebo check: same model, fake intervention inside the pre-period.
+    const placeboCfg = placeboConfig(snapshot)
+    if (!placeboCfg) {
+      placebo = 'skipped'
+      return
+    }
+    placebo = 'pending'
+    try {
+      placebo = await runAnalysis(makeRunPayload(prepared, placeboCfg))
+    } catch (e) {
+      placebo = { error: e instanceof Error ? e.message : String(e) }
     }
   }
 </script>
@@ -111,7 +130,13 @@
     <ModelConfig {config} />
     <div class="runbar">
       <button class="primary" onclick={run} disabled={engine.running}>
-        {engine.running ? 'Analyzing…' : 'Estimate causal impact'}
+        {#if engine.running && engine.progress != null}
+          Sampling… {Math.round(engine.progress * 100)}%
+        {:else if engine.running}
+          Analyzing…
+        {:else}
+          Estimate causal impact
+        {/if}
       </button>
       {#if engine.running}
         <button onclick={cancelRun}>Cancel</button>
@@ -126,7 +151,7 @@
 {#if result && prepared && resultConfig}
   <section class="card">
     <h2>3 · Results</h2>
-    <Results data={prepared} config={resultConfig} {result} />
+    <Results data={prepared} config={resultConfig} {result} {placebo} />
   </section>
 {/if}
 

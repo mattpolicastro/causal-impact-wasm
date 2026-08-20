@@ -1,13 +1,23 @@
 <script lang="ts">
   import { mountChart, theme, token } from '../charts.svelte'
   import { download, toCsv } from '../data'
+  import { assess } from '../diagnostics'
   import type { AnalysisConfig, AnalysisResult, PreparedData } from '../types'
+  import DiagnosticsPanel from './DiagnosticsPanel.svelte'
 
   let {
     data,
     config,
     result,
-  }: { data: PreparedData; config: AnalysisConfig; result: AnalysisResult } = $props()
+    placebo,
+  }: {
+    data: PreparedData
+    config: AnalysisConfig
+    result: AnalysisResult
+    placebo: AnalysisResult | 'pending' | 'skipped' | { error: string }
+  } = $props()
+
+  const diagnostics = $derived(assess(data, config, result, placebo))
 
   let panelOriginal: HTMLDivElement
   let panelPointwise: HTMLDivElement
@@ -157,6 +167,8 @@
   }
 </script>
 
+<DiagnosticsPanel items={diagnostics} />
+
 <div class="tiles">
   <div class="tile">
     <h3>Relative effect (avg)</h3>
@@ -230,6 +242,17 @@
   </table>
 </div>
 
+{#if result.inclusion_probs && Object.keys(result.inclusion_probs).length}
+  <h3>Control series used by the model</h3>
+  <p class="muted inclusion">
+    {#each Object.entries(result.inclusion_probs) as [name, prob] (name)}
+      <span><strong>{name}</strong> {(prob * 100).toFixed(0)}%</span>
+    {/each}
+    — posterior probability each control belongs in the model; low values mean
+    it was pruned as unhelpful.
+  </p>
+{/if}
+
 <details>
   <summary>Analysis report</summary>
   <p class="report">{result.report}</p>
@@ -241,11 +264,13 @@
   <button onclick={copyReport}>{copied ? 'Copied ✓' : 'Copy report'}</button>
 </div>
 
-<p class="muted">
-  Estimates come from a maximum-likelihood structural time-series model
-  (statsmodels), not the MCMC spike-and-slab sampler of the original R package —
-  point estimates and intervals are close in practice but not identical.
-</p>
+{#if result.engine === 'mle'}
+  <p class="muted">
+    Estimates come from the fast maximum-likelihood engine: intervals ignore
+    parameter uncertainty and all selected covariates are used as-is. Prefer the
+    Bayesian engine for decisions that matter.
+  </p>
+{/if}
 
 <style>
   .tiles {
@@ -301,5 +326,14 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 20px;
+  }
+
+  .inclusion span {
+    margin-right: 14px;
+  }
+
+  .inclusion strong {
+    color: var(--ink);
+    font-weight: 600;
   }
 </style>

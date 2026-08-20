@@ -1,7 +1,14 @@
 # causal-impact-wasm
 
-Browser-hosted CausalImpact: Svelte 5 + Vite app running a vendored, patched
-`pycausalimpact` on Pyodide in a web worker. See README.md for architecture.
+Browser-hosted CausalImpact: Svelte 5 + Vite app running two Python engines on
+Pyodide in a web worker — `py/bayes.py` (default: numpy Gibbs sampler, local
+level + spike-and-slab regression) and `py/causalimpact/` (vendored, patched
+`pycausalimpact` MLE). See README.md for architecture.
+
+Audience note: this is deployed to inexperienced analysts. The sanity-check
+panel (`src/lib/diagnostics.ts`: pre-period fit, automatic placebo run, regime
+warnings) is a load-bearing safety feature, not decoration — don't weaken its
+wording or thresholds without deliberate review.
 
 ## Invariants
 

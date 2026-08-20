@@ -10,6 +10,7 @@ export type EngineStage =
 export const engine = $state({
   stage: 'idle' as EngineStage,
   running: false,
+  progress: null as number | null, // 0..1 while a Bayesian fit is running
   error: null as string | null,
 })
 
@@ -23,6 +24,7 @@ function settle(action: (p: NonNullable<typeof pending>) => void) {
   if (pending) action(pending)
   pending = null
   engine.running = false
+  engine.progress = null
 }
 
 function ensureWorker(): Worker {
@@ -34,6 +36,8 @@ function ensureWorker(): Worker {
     const msg = event.data
     if (msg.type === 'status') {
       engine.stage = msg.stage
+    } else if (msg.type === 'progress') {
+      engine.progress = msg.done / msg.total
     } else if (msg.type === 'ready') {
       engine.stage = 'ready'
     } else if (msg.type === 'result') {

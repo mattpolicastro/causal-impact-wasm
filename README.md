@@ -9,28 +9,38 @@ report. No server, no data upload: the model fits in a web worker via
 
 ## How it works
 
-- **Engine**: a vendored, patched copy of
+- **Default engine — Bayesian** (`py/bayes.py`): a pure-numpy Gibbs sampler in
+  the spirit of R's `bsts` as used by CausalImpact — local level via
+  forward-filter backward-sampling, spike-and-slab (SSVS) variable selection
+  over the control series, conjugate variance updates. Intervals include
+  parameter uncertainty; unhelpful covariates are pruned automatically, and
+  their posterior inclusion probabilities are reported in the UI.
+- **Fast engine — MLE** (`py/causalimpact/`): a vendored, patched copy of
   [dafiti/causalimpact](https://github.com/dafiti/causalimpact) (`pycausalimpact`
-  0.1.1, Apache 2.0) in `py/causalimpact/`, updated for numpy 2.4 / pandas 3.0 /
-  statsmodels 0.14 — the exact versions Pyodide 314.0.5 ships. It fits a
-  structural time-series model (local level + covariate regression, optional
-  seasonality) with `statsmodels.UnobservedComponents` and derives pointwise and
-  cumulative effects, credible intervals, and a tail-area p-value from simulated
-  forecasts.
+  0.1.1, Apache 2.0), updated for numpy 2.4 / pandas 3.0 / statsmodels 0.14 —
+  the exact versions Pyodide 314.0.5 ships. Kalman-filter maximum likelihood via
+  `statsmodels.UnobservedComponents`; supports seasonal components; intervals
+  ignore parameter uncertainty.
+- **Guardrails**: every run is followed by automated sanity checks rendered in
+  plain language — pre-period fit (R²), an automatic **placebo test** (re-run
+  with a fake intervention inside the pre-period; a "significant" placebo fails
+  the result), pre-period length, covariate-count, and marginal-significance
+  warnings, plus a standing note on the assumptions no statistic can check.
 - **Bridge**: `py/runner.py` is a JSON-in/JSON-out entrypoint; periods are
   integer positions (the JS side owns date semantics). Runs are deterministic
-  given a seed.
+  given a seed, in both engines.
 - **App**: Svelte 5 + Vite + TypeScript; uPlot charts with synced cursors;
   Pyodide loaded from the jsDelivr CDN inside a module worker (~20 MB one-time,
   cached by the browser).
 
 ### Fidelity vs the R package
 
-The R original samples a Bayesian spike-and-slab model by MCMC (`bsts`). This
-port — like `pycausalimpact` — fits by maximum likelihood via Kalman filtering.
-Point estimates and intervals are close in practice but not identical. (Running
-the R package itself in the browser is currently impossible: `bsts` has no
-WebAssembly build in the webR repository.)
+The Bayesian engine follows the same model family and sampling scheme as
+`bsts`/CausalImpact but is an independent implementation with its own default
+priors (documented in `py/bayes.py`); it is validated by recovery and
+null-calibration tests rather than draw-for-draw parity with R. (Running the R
+package itself in the browser is impossible: `bsts` has no WebAssembly build in
+the webR repository.) The MLE engine matches `pycausalimpact` behavior.
 
 ## Development
 
