@@ -1,0 +1,296 @@
+<script lang="ts">
+  import { defaultDurations, makePowerPayload } from '../data'
+  import { cancelRun, engine, runPower } from '../engine.svelte'
+  import type { PowerConfig, PowerResult, PreparedData } from '../types'
+
+  let { data, unit }: { data: PreparedData; unit: string } = $props()
+
+  let mode = $state<PowerConfig['mode']>('lift')
+  let harmThreshold = $state(-0.02)
+  let alpha = $state(0.05)
+  let powerTarget = $state(0.8)
+  let seed = $state(12345)
+  let result = $state<PowerResult | null>(null)
+  let error = $state<string | null>(null)
+
+  const EFFECTS = [0.01, 0.02, 0.03, 0.05, 0.1]
+
+  const durations = $derived(defaultDurations(data.y.length))
+  const tooShort = $derived(durations.length === 0)
+
+  const pct = (x: number, dp = 0) => `${(x * 100).toFixed(dp)}%`
+
+  // The recommendation is only meaningful if some effect actually reaches the
+  // target; otherwise the honest answer is "no duration is enough".
+  const best = $derived(result ? Math.min(...result.mde) : null)
+  const longest = $derived(result ? result.mde[result.mde.length - 1] : null)
+  const recommended = $derived(result?.recommended_duration ?? null)
+  const recommendedMde = $derived(
+    result && recommended != null ? result.mde[result.durations.indexOf(recommended)] : null,
+  )
+  // Counterfactual uncertainty compounds about as fast as the effect
+  // accumulates, so these curves flatten and can even turn back upward.
+  const plateaus = $derived(
+    best != null && longest != null && longest >= best - 0.001,
+  )
+
+  async function run() {
+    error = null
+    result = null
+    const config: PowerConfig = {
+      mode,
+      harmThreshold,
+      alpha,
+      powerTarget,
+      durations,
+      effects: EFFECTS,
+      nSims: 2000,
+      seed,
+    }
+    try {
+      result = await runPower(makePowerPayload(data, config))
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      if (message !== 'Cancelled.' && !message.startsWith('Superseded')) error = message
+    }
+  }
+</script>
+
+<p class="muted lede">
+  Estimates how long a test must run, from this history alone — no intervention
+  has happened yet. The model is fit on your real data and its actual residual
+  noise, then a known effect is injected into thousands of simulated futures to
+  see how often it would be caught.
+</p>
+
+{#if tooShort}
+  <p class="error">
+    Only {data.y.length} points of history. Planning needs at least 30, and at
+    least twice the length of the shortest test worth running. Pull more history.
+  </p>
+{:else}
+  <div class="row">
+    <label class="field">
+      Question
+      <select bind:value={mode}>
+        <option value="lift">Did it help? (detect a lift)</option>
+        <option value="no-harm">Did it avoid harm? (rule out a drop)</option>
+      </select>
+    </label>
+
+    {#if mode === 'no-harm'}
+      <label class="field">
+        Unacceptable drop
+        <select bind:value={harmThreshold}>
+          <option value={-0.01}>worse than 1%</option>
+          <option value={-0.02}>worse than 2%</option>
+          <option value={-0.05}>worse than 5%</option>
+        </select>
+      </label>
+    {/if}
+
+    <label class="field">
+      Credible interval
+      <select bind:value={alpha}>
+        <option value={0.1}>90%</option>
+        <option value={0.05}>95%</option>
+        <option value={0.01}>99%</option>
+      </select>
+    </label>
+
+    <label class="field">
+      Detection rate
+      <select bind:value={powerTarget}>
+        <option value={0.8}>80% — conventional</option>
+        <option value={0.9}>90% — stricter</option>
+      </select>
+    </label>
+
+    <label class="field">
+      Seed
+      <input type="number" bind:value={seed} />
+    </label>
+  </div>
+
+  <p class="muted">
+    {#if mode === 'lift'}
+      A lift claim needs the interval to sit clearly above zero. An inconclusive
+      result is a safe default: it just means no good evidence of a gain.
+    {:else}
+      “No harm” is not the same as “inconclusive”. The interval has to be narrow
+      enough to rule out a drop worse than {pct(Math.abs(harmThreshold))}, which
+      is a stronger demand than clearing zero — decide this margin now, before
+      you see any results.
+    {/if}
+  </p>
+
+  <div class="runbar">
+    <button class="primary" onclick={run} disabled={engine.running}>
+      {#if engine.running && engine.progress != null}
+        Simulating… {Math.round(engine.progress * 100)}%
+      {:else if engine.running}
+        Simulating…
+      {:else}
+        Estimate required runtime
+      {/if}
+    </button>
+    {#if engine.running}
+      <button onclick={cancelRun}>Cancel</button>
+    {/if}
+    {#if error}<span class="error">{error}</span>{/if}
+  </div>
+{/if}
+
+{#if result}
+  <hr />
+
+  {#if recommended == null || recommendedMde == null || !Number.isFinite(recommendedMde)}
+    <p class="headline bad">
+      No duration in range reaches a {pct(result.power_target)} detection rate.
+      This metric is too noisy relative to the effects being tested — add better
+      control series, or accept that only a large effect would be visible.
+    </p>
+  {:else}
+    <p class="headline">
+      Run for <strong>{recommended} {unit}</strong> to detect a
+      <strong>{pct(recommendedMde, 1)}</strong>
+      {mode === 'lift' ? 'lift' : 'margin'}
+      {pct(result.power_target)} of the time.
+    </p>
+    {#if plateaus}
+      <p class="muted">
+        Running longer barely helps: the counterfactual's uncertainty grows about
+        as fast as the effect accumulates, so the curve flattens after this
+        point. The longest window tested ({result.durations[result.durations.length - 1]}
+        {unit}) only reaches {pct(longest!, 1)}. Extra weeks mostly add chances
+        for something else to contaminate the result.
+      </p>
+    {/if}
+  {/if}
+
+  <table>
+    <caption class="muted">
+      Detection rate by test length and true effect size. Shaded cells clear your
+      {pct(result.power_target)} target.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Test length</th>
+        {#each result.effects as e (e)}
+          <th scope="col">{pct(e)}</th>
+        {/each}
+        <th scope="col" class="mde">Smallest detectable</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each result.durations as d, i (d)}
+        <tr class:recommended={d === recommended}>
+          <th scope="row">{d} {unit}</th>
+          {#each result.power[i] as p, j (result.effects[j])}
+            <td class:hit={p >= result.power_target}>{pct(p)}</td>
+          {/each}
+          <td class="mde">
+            {Number.isFinite(result.mde[i]) ? pct(result.mde[i], 1) : '—'}
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+
+  <p class="muted">
+    Fit once on all {result.n_train} points — a test that hasn't run yet doesn't
+    consume history, so every length here trains on everything you have and the
+    rows differ only by how long the test runs. The stand-in future is the tail
+    of your own history; if that stretch was unusual, say a promo, these numbers
+    inherit it. {result.n_sims.toLocaleString()} simulations per cell.
+    {#if result.covariate_names.length === 0}
+      No control series were supplied; adding controls that track this metric is
+      the most effective way to shorten a test.
+    {/if}
+  </p>
+
+  <p class="muted">
+    Commit to a length before you start. Checking each day and stopping when the
+    interval first excludes zero is a different, much weaker test than this one,
+    and it finds effects that are not there. Then check the window against your
+    calendar — promos, launches and seasonal peaks inside it will contaminate the
+    result.
+  </p>
+{/if}
+
+<style>
+  .lede {
+    margin-top: 0;
+  }
+
+  .runbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--grid);
+    margin: 20px 0 16px;
+  }
+
+  .headline {
+    font-size: 17px;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }
+
+  .headline.bad {
+    color: var(--warning);
+  }
+
+  table {
+    border-collapse: collapse;
+    margin-top: 14px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  caption {
+    text-align: left;
+    margin-bottom: 8px;
+  }
+
+  th,
+  td {
+    padding: 5px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--grid);
+  }
+
+  thead th {
+    color: var(--ink-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  tbody th {
+    text-align: left;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  td.hit {
+    background: var(--pre-shade);
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  td.mde,
+  th.mde {
+    border-left: 1px solid var(--grid);
+    color: var(--ink-secondary);
+  }
+
+  tr.recommended th,
+  tr.recommended td {
+    border-bottom-color: var(--accent);
+  }
+</style>

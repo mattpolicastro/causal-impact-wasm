@@ -94,9 +94,26 @@ def test_recommends_a_duration_that_was_offered():
 
 
 def test_rejects_history_too_short_to_plan_from():
-    y, X = _history(n=40)
+    y, X = _history(n=20)
     with pytest.raises(ValueError, match='at least'):
+        power.simulate_power(y, X, durations=[5], effects=[0.05], seed=1)
+
+
+def test_rejects_a_test_longer_than_half_the_history():
+    """The stand-in future is the tail of history, so it cannot be most of it."""
+    y, X = _history(n=40)
+    with pytest.raises(ValueError, match='most of the series'):
         power.simulate_power(y, X, durations=[28], effects=[0.05], seed=1)
+
+
+def test_offering_a_longer_duration_does_not_change_shorter_rows():
+    """Training is the whole history either way, so a row must not depend on
+    what else is in the table. This was wrong twice before."""
+    y, X = _history()
+    short = _run(y, X, durations=[7, 14], effects=[0.05])
+    long = _run(y, X, durations=[7, 14, 56], effects=[0.05])
+    assert short['power'][0] == long['power'][0]
+    assert short['mde'][:2] == long['mde'][:2]
 
 
 def test_rejects_gaps_in_history():

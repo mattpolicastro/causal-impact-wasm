@@ -4,6 +4,7 @@
   import DataIngest from './lib/components/DataIngest.svelte'
   import ModelConfig from './lib/components/ModelConfig.svelte'
   import PeriodPicker from './lib/components/PeriodPicker.svelte'
+  import PowerPlan from './lib/components/PowerPlan.svelte'
   import Results from './lib/components/Results.svelte'
   import { makeRunPayload, prepare } from './lib/data'
   import { placeboConfig } from './lib/diagnostics'
@@ -24,6 +25,10 @@
   let resultConfig = $state<AnalysisConfig | null>(null)
   let placebo = $state<PlaceboState>('skipped')
   let runError = $state<string | null>(null)
+  // Two different jobs: measuring an intervention that happened, and planning
+  // one that hasn't. Planning has no intervention date, so it cannot share the
+  // period picker.
+  let appMode = $state<'measure' | 'plan'>('measure')
 
   // Pyodide + the numeric stack is a ~20MB download; start it immediately.
   warmUp()
@@ -39,6 +44,7 @@
   })
   const prepared = $derived(preparation?.data ?? null)
   const prepareError = $derived(preparation?.error ?? null)
+  const unit = $derived(prepared?.index.type === 'date' ? 'days' : 'points')
 
   const stageLabel: Record<string, string> = {
     idle: 'engine off',
@@ -108,6 +114,14 @@
     </p>
   </div>
   <div class="header-right">
+    <div class="modes" role="group" aria-label="What are you doing?">
+      <button class:on={appMode === 'measure'} onclick={() => (appMode = 'measure')}>
+        Measure an impact
+      </button>
+      <button class:on={appMode === 'plan'} onclick={() => (appMode = 'plan')}>
+        Plan a test
+      </button>
+    </div>
     <span class="status" class:ready={engine.stage === 'ready'}>
       {engine.running ? 'fitting model…' : stageLabel[engine.stage]}
     </span>
@@ -136,7 +150,14 @@
   {/if}
 </section>
 
-{#if prepared && config}
+{#if prepared && appMode === 'plan'}
+  <section class="card">
+    <h2>2 · Test length</h2>
+    <PowerPlan data={prepared} {unit} />
+  </section>
+{/if}
+
+{#if prepared && config && appMode === 'measure'}
   <section class="card">
     <h2>2 · Analysis design</h2>
     <PeriodPicker data={prepared} {config} />
@@ -162,7 +183,7 @@
   </section>
 {/if}
 
-{#if result && prepared && resultConfig}
+{#if result && prepared && resultConfig && appMode === 'measure'}
   <section class="card">
     <h2>3 · Results</h2>
     <Results data={prepared} config={resultConfig} {result} {placebo} />
@@ -194,6 +215,29 @@
     flex-direction: column;
     align-items: end;
     gap: 8px;
+  }
+
+  .modes {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .modes button {
+    font-size: 12.5px;
+    padding: 3px 12px;
+    border: none;
+    border-radius: 999px;
+    background: none;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+  }
+
+  .modes button.on {
+    background: var(--accent);
+    color: var(--accent-ink);
   }
 
   .appearance {

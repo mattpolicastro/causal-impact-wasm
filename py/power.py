@@ -97,10 +97,30 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
     """Estimate detection rates over a grid of test durations and effect sizes.
 
     `y` and `X` are the full historical series — no intervention has occurred.
-    The longest candidate duration is held out as a pseudo post-period so the
-    simulated futures run against real covariate paths. That means the model
-    trains on less history than the eventual analysis will, which biases power
-    down and recommended durations up: the safe direction to be wrong in.
+
+    The model is fit once on ALL of that history, and each candidate duration
+    varies only the forecast horizon. Getting here took two wrong turns worth
+    recording, because both look reasonable:
+
+    Holding out the longest candidate for every row made each row pay the
+    longest candidate's cost, so merely offering a longer option degraded the
+    short-duration estimates — the table changed depending on what else was in
+    it. Holding out each duration's own tail fixed that but introduced a worse
+    confound: rows then differed in training size, and more history lets the
+    sampler infer a larger level drift, which widens the forecast band. A 7-day
+    row fit on 173 points scored worse than one fit on 96, for reasons that had
+    nothing to do with test length.
+
+    Both are wrong for the same reason: a test that has not run yet does not
+    consume history. Whatever length you pick, the real analysis will fit on
+    everything you have. So training is held fixed at the full series and only
+    the horizon moves, which is the only way rows compare like for like.
+
+    The post-period covariate path is the last `duration` points of history,
+    reused as a stand-in for the future. Nothing leaks from the response — the
+    simulated futures are drawn from the posterior and real bootstrapped
+    residuals — but if that tail is unusual (a promo, an outage), the
+    counterfactual inherits it.
 
     `effects` and `harm_threshold` are relative, as fractions (0.02 is a 2%
     lift; a harm threshold of -0.02 means "a drop worse than 2% is
@@ -116,12 +136,16 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
     if not np.isfinite(y).all():
         raise ValueError('Power simulation requires history without gaps.')
 
-    n_train = len(y) - durations[-1]
+    n_train = len(y)
     if n_train < MIN_TRAIN:
         raise ValueError(
-            f'Need at least {MIN_TRAIN + durations[-1]} time points to plan a '
-            f'{durations[-1]}-point test; got {len(y)}. Pull more history or '
-            f'shorten the longest duration considered.')
+            f'Need at least {MIN_TRAIN} time points of history to plan from; '
+            f'got {n_train}. Pull more history.')
+    if durations[-1] * 2 > n_train:
+        raise ValueError(
+            f'Cannot plan a {durations[-1]}-point test from {n_train} points of '
+            f'history: the stand-in future would be most of the series. Pull '
+            f'more history or shorten the longest duration considered.')
 
     if X is not None:
         X = np.asarray(X, dtype=float)
@@ -134,24 +158,22 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
 
     burn = max(100, niter // 5) if burn is None else int(burn)
 
-    # --- one fit, on history only -----------------------------------------
-    y_tr = y[:n_train]
-    mu_y, sd_y = y_tr.mean(), y_tr.std()
+    # --- one fit, on the whole history -------------------------------------
+    mu_y, sd_y = y.mean(), y.std()
     if sd_y == 0:
         raise ValueError('Input response cannot be constant.')
     Xs = Xs_tr = None
     if X is not None and X.shape[1]:
-        mu_x, sd_x = X[:n_train].mean(axis=0), X[:n_train].std(axis=0)
+        mu_x, sd_x = X.mean(axis=0), X.std(axis=0)
         sd_x[sd_x == 0] = 1.0
-        Xs = (X - mu_x) / sd_x
-        Xs_tr = Xs[:n_train]
+        Xs = Xs_tr = (X - mu_x) / sd_x
 
-    draws = bayes.gibbs_fit((y_tr - mu_y) / sd_y, Xs_tr, niter, burn,
+    draws = bayes.gibbs_fit((y - mu_y) / sd_y, Xs_tr, niter, burn,
                             prior_level_sd, seed, progress=progress)
 
     # Real residual noise, not a textbook assumption.
     fitted = bayes.fitted_pre(draws, Xs_tr, seed).mean(axis=0) * sd_y + mu_y
-    resid = y_tr - fitted
+    resid = y - fitted
 
     rng = np.random.default_rng(seed)
     grid = np.empty((len(durations), len(effects)))
@@ -159,7 +181,8 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
     false_positive = np.empty(len(durations))
 
     for i, n_post in enumerate(durations):
-        Xs_post = Xs[n_train:n_train + n_post] if Xs is not None else None
+        # Stand-in future covariates: the last n_post points of real history.
+        Xs_post = Xs[n_train - n_post:] if Xs is not None else None
 
         # What the analysis would report as the counterfactual interval.
         pred = bayes.posterior_predict(draws, Xs_post, n_post, seed) * sd_y + mu_y

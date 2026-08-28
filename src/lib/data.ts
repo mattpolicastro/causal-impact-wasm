@@ -4,6 +4,8 @@ import type {
   IndexInfo,
   Mapping,
   ParsedTable,
+  PowerConfig,
+  PowerPayload,
   PreparedData,
   RunPayload,
 } from './types'
@@ -101,6 +103,36 @@ export function makeRunPayload(data: PreparedData, config: AnalysisConfig): RunP
       : {}),
     prior_level_sd: config.engine === 'bayes' ? (config.priorLevelSd ?? 0.01) : config.priorLevelSd,
     n_sims: config.nSims,
+    niter: 1000,
+    seed: config.seed,
+  }
+}
+
+/**
+ * Candidate durations for a power sweep, in time points. The model fits on the
+ * whole history whatever the duration, but the stand-in future is the tail of
+ * that history, so a candidate cannot exceed half of it.
+ */
+export function defaultDurations(n: number): number[] {
+  if (n < 30) return []
+  return [7, 14, 21, 28, 42, 56, 70, 84].filter((d) => d * 2 <= n)
+}
+
+export function makePowerPayload(
+  data: PreparedData,
+  config: PowerConfig,
+): PowerPayload {
+  return {
+    task: 'power',
+    y: data.y,
+    covariates: data.covariates,
+    durations: config.durations,
+    effects: config.effects,
+    alpha: config.alpha,
+    n_sims: config.nSims,
+    harm_threshold: config.mode === 'no-harm' ? config.harmThreshold : null,
+    power_target: config.powerTarget,
+    prior_level_sd: 0.01,
     niter: 1000,
     seed: config.seed,
   }
