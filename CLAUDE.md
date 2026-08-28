@@ -31,6 +31,7 @@ wording or thresholds without deliberate review.
   null-calibration sweep; `test_r_parity.py` runs only if
   `tests/fixtures/r_reference.json` exists — regenerate it with
   `Rscript tests/fixtures/generate_r_reference.R` after engine changes)
+- Power sim: `cd py && .venv/bin/python -m pytest tests/test_power.py`
 - Error rates: `py/.venv/bin/python py/stress/harness.py --reps 100` → rewrites
   `py/stress/REPORT.md`; run after any change to either engine's inference
 - App: `npm run check` (svelte-check), `npm run build`
