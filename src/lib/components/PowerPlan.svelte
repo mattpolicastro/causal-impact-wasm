@@ -19,6 +19,19 @@
   let result = $state<PowerResult | null>(null)
   let baseline = $state<PowerResult | null>(null)
   let excludedText = $state('')
+  let seededFor = $state('')
+  const fromFile = $derived(data.flaggedLabels.length)
+
+  // Reseed from the file's exclude column when the underlying series changes,
+  // but not on every mapping tweak — otherwise switching a covariate would wipe
+  // dates the analyst had typed.
+  $effect(() => {
+    const id = `${data.index.labels[0] ?? ''}|${data.index.labels.length}`
+    if (id !== seededFor) {
+      seededFor = id
+      excludedText = data.flaggedLabels.join('\n')
+    }
+  })
   let error = $state<string | null>(null)
 
   const EFFECTS = [0.01, 0.02, 0.03, 0.05, 0.1]
@@ -181,9 +194,16 @@
       Known events to leave out
       {#if matched.length}<strong>({matched.length} days)</strong>{/if}
     </summary>
+    {#if fromFile}
+      <p class="muted">
+        {fromFile} days came flagged in your file's exclude column. Edit freely —
+        this list is what gets used, not the column.
+      </p>
+    {/if}
     <p class="muted">
       Sale days, outages, launches — anything that pushed this metric somewhere
-      it does not normally sit. A model fit through them believes the metric is
+      it does not normally sit. Add an <code>exclude</code> column to your CSV to
+      carry these in the same file next time. A model fit through them believes the metric is
       noisier than it is, which inflates the effect you need at every duration.
       One date per line, matching the {data.index.type === 'date' ? 'dates' : 'row labels'}
       in your file.

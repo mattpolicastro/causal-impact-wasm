@@ -41,10 +41,31 @@ function isNumericColumn(table: ParsedTable, col: string): boolean {
   return table.rows.some((r) => typeof r[col] === 'number')
 }
 
+/**
+ * A column marking rows to leave out — sale days, outages, launches — so the
+ * calendar travels in the same file as the data instead of being pasted
+ * separately. Recognised by name, and never offered as a covariate: a 0/1 flag
+ * is numeric, and silently regressing the metric on "was there a sale" would be
+ * a very confusing thing to do by accident.
+ */
+const EXCLUDE_COLUMN = /^(exclude|excluded|omit|skip|ignore|event|events|sale|sales|promo|promos|holdout)$/i
+
+export function excludeColumn(table: ParsedTable): string | null {
+  return table.columns.find((c) => EXCLUDE_COLUMN.test(c.trim())) ?? null
+}
+
+/** Blank, 0, false, no and n mean keep. Anything else means leave this row out. */
+function isFlagged(v: unknown): boolean {
+  if (v === null || v === undefined) return false
+  const s = String(v).trim().toLowerCase()
+  return s !== '' && s !== '0' && s !== 'false' && s !== 'no' && s !== 'n'
+}
+
 export function inferMapping(table: ParsedTable): Mapping {
   const dateCol = table.columns.find((c) => isDateColumn(table, c)) ?? null
+  const flagCol = excludeColumn(table)
   const numeric = table.columns.filter(
-    (c) => c !== dateCol && isNumericColumn(table, c),
+    (c) => c !== dateCol && c !== flagCol && isNumericColumn(table, c),
   )
   if (numeric.length === 0) throw new Error('No numeric columns found in the CSV.')
   return { indexCol: dateCol, yCol: numeric[0], covariateCols: numeric.slice(1) }
@@ -86,7 +107,12 @@ export function prepare(table: ParsedTable, mapping: Mapping): PreparedData {
   for (const col of mapping.covariateCols) {
     covariates[col] = numberColumn(col, false)
   }
-  return { index, y: numberColumn(mapping.yCol, true), covariates }
+  const flagCol = excludeColumn(table)
+  const flaggedLabels = flagCol
+    ? order.flatMap((i, pos) => (isFlagged(table.rows[i][flagCol]) ? [index.labels[pos]] : []))
+    : []
+
+  return { index, y: numberColumn(mapping.yCol, true), covariates, flaggedLabels }
 }
 
 export function makeRunPayload(data: PreparedData, config: AnalysisConfig): RunPayload {
@@ -148,6 +174,7 @@ export function excludeLabels(data: PreparedData, labels: string[]): PreparedDat
     },
     y: pick(data.y),
     covariates,
+    flaggedLabels: data.flaggedLabels,
   }
 }
 

@@ -20,6 +20,8 @@ export interface PreparedData {
   index: IndexInfo
   y: number[]
   covariates: Record<string, number[]>
+  /** Labels flagged by an exclude column in the source file, if there was one. */
+  flaggedLabels: string[]
 }
 
 export type Engine = 'bayes' | 'mle'
