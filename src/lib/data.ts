@@ -118,6 +118,65 @@ export function defaultDurations(n: number): number[] {
   return [7, 14, 21, 28, 42, 56, 70, 84].filter((d) => d * 2 <= n)
 }
 
+/**
+ * Drop labelled rows before planning. Sale days and outages sit far from the
+ * metric's normal level, and a model fit through them believes the metric is
+ * noisier than it is — which inflates every duration's required effect.
+ *
+ * Rows are removed rather than gapped: the engine has no missing-data path, and
+ * for estimating how noisy a metric is the gap's exact width does not matter.
+ * That is not true of the analysis path, where dropping days inside the
+ * post-period would bias the effect, so this is planning-only.
+ */
+export function excludeLabels(data: PreparedData, labels: string[]): PreparedData {
+  const drop = new Set(labels)
+  const keep: number[] = []
+  data.index.labels.forEach((l, i) => {
+    if (!drop.has(l)) keep.push(i)
+  })
+  if (keep.length === data.index.labels.length) return data
+  const pick = <T>(a: T[]) => keep.map((i) => a[i])
+  const covariates: Record<string, number[]> = {}
+  for (const [name, values] of Object.entries(data.covariates)) {
+    covariates[name] = pick(values)
+  }
+  return {
+    index: {
+      type: data.index.type,
+      xs: pick(data.index.xs),
+      labels: pick(data.index.labels),
+    },
+    y: pick(data.y),
+    covariates,
+  }
+}
+
+/**
+ * Days sitting far enough from the metric's usual level to distort a fit,
+ * by median absolute deviation on the log scale so that the outliers do not
+ * inflate the very threshold meant to catch them.
+ *
+ * A starting point for the analyst, never an answer: run against a real series
+ * this flagged one known sale window and missed another entirely. The calendar
+ * is the source of truth.
+ */
+export function detectOutlierLabels(data: PreparedData, z = 3): string[] {
+  const finite = data.y.filter((v) => Number.isFinite(v) && v > 0)
+  if (finite.length < 10) return []
+  const logs = finite.map(Math.log).sort((a, b) => a - b)
+  const median = logs[Math.floor(logs.length / 2)]
+  const devs = logs.map((v) => Math.abs(v - median)).sort((a, b) => a - b)
+  const mad = devs[Math.floor(devs.length / 2)] * 1.4826
+  if (!(mad > 0)) return []
+  const out: string[] = []
+  data.y.forEach((v, i) => {
+    if (Number.isFinite(v) && v > 0 && Math.abs(Math.log(v) - median) / mad > z) {
+      out.push(data.index.labels[i])
+    }
+  })
+  return out
+}
+
 export function makePowerPayload(
   data: PreparedData,
   config: PowerConfig,

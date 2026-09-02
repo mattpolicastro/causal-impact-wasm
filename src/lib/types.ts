@@ -66,6 +66,8 @@ export type PowerMode = 'lift' | 'no-harm'
 
 export interface PowerConfig {
   mode: PowerMode
+  /** Labels (ISO dates or row numbers) to drop before fitting. */
+  excludedLabels: string[]
   /** Must match what the real analysis will run: it dominates the answer. */
   priorLevelSd: number
   /** Negative fraction: -0.02 means "a drop worse than 2% is unacceptable". */

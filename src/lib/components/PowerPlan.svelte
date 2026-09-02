@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { defaultDurations, makePowerPayload } from '../data'
+  import {
+    defaultDurations,
+    detectOutlierLabels,
+    excludeLabels,
+    makePowerPayload,
+  } from '../data'
   import { cancelRun, engine, runPower } from '../engine.svelte'
   import type { PowerConfig, PowerResult, PreparedData } from '../types'
 
@@ -12,11 +17,24 @@
   let priorLevelSd = $state(0.01)
   let seed = $state(12345)
   let result = $state<PowerResult | null>(null)
+  let baseline = $state<PowerResult | null>(null)
+  let excludedText = $state('')
   let error = $state<string | null>(null)
 
   const EFFECTS = [0.01, 0.02, 0.03, 0.05, 0.1]
+  // Below this the two runs are indistinguishable and calling it an improvement
+  // would talk an analyst into discarding history for nothing.
+  const MATERIAL = 0.002
 
-  const durations = $derived(defaultDurations(data.y.length))
+  const excluded = $derived(
+    excludedText.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean),
+  )
+  const known = $derived(new Set(data.index.labels))
+  const matched = $derived(excluded.filter((l) => known.has(l)))
+  const unmatched = $derived(excluded.filter((l) => !known.has(l)))
+  const kept = $derived(excludeLabels(data, matched))
+
+  const durations = $derived(defaultDurations(kept.y.length))
   const tooShort = $derived(durations.length === 0)
 
   const pct = (x: number, dp = 0) => `${(x * 100).toFixed(dp)}%`
@@ -41,12 +59,19 @@
     result != null && result.mde[result.mde.length - 1] > result.mde[0] + 0.001,
   )
 
+  function suggest() {
+    const found = detectOutlierLabels(data)
+    excludedText = [...new Set([...matched, ...found])].sort().join('\n')
+  }
+
   async function run() {
     error = null
     result = null
+    baseline = null
     const config: PowerConfig = {
       mode,
       priorLevelSd,
+      excludedLabels: matched,
       harmThreshold,
       alpha,
       powerTarget,
@@ -56,7 +81,12 @@
       seed,
     }
     try {
-      result = await runPower(makePowerPayload(data, config))
+      result = await runPower(makePowerPayload(kept, config))
+      // Run the unexcluded series too, so the cost of those days is visible
+      // rather than asserted. Cheap: the sweep is vectorized.
+      if (matched.length) {
+        baseline = await runPower(makePowerPayload(data, config))
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (message !== 'Cancelled.' && !message.startsWith('Superseded')) error = message
@@ -146,6 +176,40 @@
     {/if}
   </p>
 
+  <details class="events" open={excluded.length > 0}>
+    <summary>
+      Known events to leave out
+      {#if matched.length}<strong>({matched.length} days)</strong>{/if}
+    </summary>
+    <p class="muted">
+      Sale days, outages, launches — anything that pushed this metric somewhere
+      it does not normally sit. A model fit through them believes the metric is
+      noisier than it is, which inflates the effect you need at every duration.
+      One date per line, matching the {data.index.type === 'date' ? 'dates' : 'row labels'}
+      in your file.
+    </p>
+    <textarea
+      bind:value={excludedText}
+      rows="4"
+      placeholder={data.index.labels.slice(0, 2).join('\n')}
+    ></textarea>
+    <div class="runbar">
+      <button onclick={suggest}>Suggest from the data</button>
+      {#if unmatched.length}
+        <span class="error">
+          {unmatched.length} not found in this file: {unmatched.slice(0, 3).join(', ')}{unmatched.length > 3 ? '…' : ''}
+        </span>
+      {:else if matched.length}
+        <span class="muted">{kept.y.length} of {data.y.length} days kept</span>
+      {/if}
+    </div>
+    <p class="muted">
+      Suggestions are a starting point, not an answer — against one real series
+      this found a known sale window and missed another completely. Your promo
+      calendar is the source of truth.
+    </p>
+  </details>
+
   <div class="runbar">
     <button class="primary" onclick={run} disabled={engine.running}>
       {#if engine.running && engine.progress != null}
@@ -198,6 +262,27 @@
         for something else to contaminate the result.
       </p>
     {/if}
+  {/if}
+
+  {#if baseline}
+    {@const before = Math.min(...baseline.mde)}
+    {@const after = Math.min(...result.mde)}
+    <p class="muted">
+      {#if after < before - MATERIAL}
+        Leaving out those {matched.length} days moved the smallest detectable
+        effect from {pct(before, 2)} to <strong>{pct(after, 2)}</strong> — those
+        days were costing you {pct(before - after, 2)} of sensitivity.
+      {:else if after > before + MATERIAL}
+        Leaving out those {matched.length} days made this <em>worse</em>:
+        {pct(before, 2)} to {pct(after, 2)}. Your control series already explains
+        what happened on them, so removing them only costs you data. Put them
+        back, or drop the control.
+      {:else}
+        Leaving out those {matched.length} days changed almost nothing
+        ({pct(before, 2)} to {pct(after, 2)}), so they were not distorting the
+        fit. Keep them and retain the history.
+      {/if}
+    </p>
   {/if}
 
   <table>
@@ -253,6 +338,30 @@
 <style>
   .lede {
     margin-top: 0;
+  }
+
+  details.events {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  details.events summary {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--ink);
+  }
+
+  details.events textarea {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+  }
+
+  details.events .muted {
+    margin: 6px 0;
   }
 
   .runbar {
