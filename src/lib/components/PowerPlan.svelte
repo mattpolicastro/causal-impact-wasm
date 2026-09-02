@@ -9,6 +9,7 @@
   let harmThreshold = $state(-0.02)
   let alpha = $state(0.05)
   let powerTarget = $state(0.8)
+  let priorLevelSd = $state(0.01)
   let seed = $state(12345)
   let result = $state<PowerResult | null>(null)
   let error = $state<string | null>(null)
@@ -33,18 +34,25 @@
   const plateaus = $derived(
     best != null && longest != null && longest >= best - 0.001,
   )
+  // Whether longer HURTS rather than merely stops helping. With good controls
+  // sigma_obs collapses, the random-walk level term takes over, and MDE grows
+  // as sqrt(N) — so the better the covariates, the sooner longer starts costing.
+  const worsens = $derived(
+    result != null && result.mde[result.mde.length - 1] > result.mde[0] + 0.001,
+  )
 
   async function run() {
     error = null
     result = null
     const config: PowerConfig = {
       mode,
+      priorLevelSd,
       harmThreshold,
       alpha,
       powerTarget,
       durations,
       effects: EFFECTS,
-      nSims: 2000,
+      nSims: 4000,
       seed,
     }
     try {
@@ -107,10 +115,24 @@
     </label>
 
     <label class="field">
+      Prior level s.d.
+      <select bind:value={priorLevelSd}>
+        <option value={0.01}>0.01 — covariates explain y well</option>
+        <option value={0.1}>0.1 — looser fit</option>
+      </select>
+    </label>
+
+    <label class="field">
       Seed
       <input type="number" bind:value={seed} />
     </label>
   </div>
+
+  <p class="muted">
+    Set the prior level s.d. to whatever you will actually run the analysis
+    with — it dominates this answer. On one realistic series the smallest
+    detectable effect at 84 days was 9% at 0.01 and 63% at 0.1.
+  </p>
 
   <p class="muted">
     {#if mode === 'lift'}
@@ -157,7 +179,17 @@
       {mode === 'lift' ? 'lift' : 'margin'}
       {pct(result.power_target)} of the time.
     </p>
-    {#if plateaus}
+    {#if worsens}
+      <p class="muted">
+        Running longer is actively worse here, not just unhelpful: by
+        {result.durations[result.durations.length - 1]} {unit} the smallest
+        detectable effect has grown to {pct(longest!, 1)}. Your controls explain
+        this metric well, which leaves the model's drifting level as the main
+        source of uncertainty, and that drift compounds faster than a longer
+        test accumulates effect. Keep the window short and spend the effort on
+        controls instead.
+      </p>
+    {:else if plateaus}
       <p class="muted">
         Running longer barely helps: the counterfactual's uncertainty grows about
         as fast as the effect accumulates, so the curve flattens after this

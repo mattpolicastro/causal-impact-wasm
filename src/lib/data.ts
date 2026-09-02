@@ -132,7 +132,7 @@ export function makePowerPayload(
     n_sims: config.nSims,
     harm_threshold: config.mode === 'no-harm' ? config.harmThreshold : null,
     power_target: config.powerTarget,
-    prior_level_sd: 0.01,
+    prior_level_sd: config.priorLevelSd,
     niter: 1000,
     seed: config.seed,
   }

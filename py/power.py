@@ -36,6 +36,32 @@ so power at e is just the fraction of replications with e* < e, and the minimum
 detectable effect at any target power is a quantile of e*. Both come out of one
 pass — no grid search, no interpolation.
 
+What decides whether a longer test helps
+----------------------------------------
+MDE goes roughly as sqrt(N * sigma_level^2 + sigma_obs^2 / N) over the mean, so
+which variance term dominates decides the direction, and it can go either way:
+
+    good controls -> sigma_obs collapses -> level term wins -> MDE ~ sqrt(N),
+                     and a longer test is actively WORSE
+    weak controls -> sigma_obs is large  -> obs term wins   -> MDE ~ 1/sqrt(N),
+                     and a longer test helps as intuition expects
+
+So the counterintuitive case is the good one: the better the control series, the
+sooner running longer stops paying and starts costing. `prior_level_sd` is the
+dominant lever over this — on one realistic series, MDE at 84 days ran 2.70% at
+0.001, 9.08% at 0.01 and 63.12% at 0.1. A plan computed at a different
+prior_level_sd than the analysis will use is not a plan for that analysis, which
+is why the caller must pass the value the analyst actually intends to run.
+
+Two things that look like they should matter here and were measured not to.
+Heteroscedasticity: a rate-derived count has variance scaling with its
+denominator, ~2.5x between quiet and busy days, but scaling the residual
+bootstrap by sqrt(denominator) moved MDE by 0.01pp. Holding traffic fixed and
+swapping heteroscedastic noise for homoscedastic noise reproduced the wandering
+curve exactly (6.53% vs 6.47% at 14 days), so the response's varying LEVEL is
+what matters, not its varying noise. And the stand-in future window: a strong
+seasonal cycle with steady traffic stays perfectly monotone.
+
 Calibration
 -----------
 On weekly-seasonal data these estimates come out conservative, and deliberately
@@ -231,19 +257,29 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
     }
 
 
-def _recommend(durations, mde):
-    """Shortest duration whose MDE is within 10% of the best on offer.
+KNEE_IMPROVEMENT = 0.05     # a longer test must beat the shorter one by this
 
-    Counterfactual uncertainty compounds with the horizon at roughly the rate
-    the effect accumulates, so these curves plateau: past some point a longer
-    test buys almost nothing while giving contamination more chances. Pick the
-    knee, not the end.
+
+def _recommend(durations, mde):
+    """Shortest duration past which extending stops paying.
+
+    These curves plateau — counterfactual uncertainty compounds about as fast as
+    the effect accumulates — and once flat, the row that happens to sit lowest is
+    noise. An earlier version anchored on the global minimum and inherited that
+    noise: across five seeds on one series it returned 56, 21, 14, 21 and 14
+    days, and ten times the simulations did not settle it, because the tolerance
+    band itself moved with the noisy minimum.
+
+    So this walks forward instead and stops where the next step no longer earns
+    its keep, which only ever compares neighbours and never depends on where the
+    overall minimum landed.
     """
-    best = float(np.min(mde))
-    if not np.isfinite(best):
+    finite = [(int(d), float(m)) for d, m in zip(durations, mde) if np.isfinite(m)]
+    if not finite:
         return None
-    tol = 0.10 * abs(best)          # absolute, so it also works when MDE is negative
-    for d, m in zip(durations, mde):
-        if np.isfinite(m) and m - best <= tol:
-            return int(d)
-    return int(durations[-1])
+    for (d, m), (_, nxt) in zip(finite, finite[1:]):
+        if m <= 0:
+            return d
+        if (m - nxt) / abs(m) < KNEE_IMPROVEMENT:
+            return d
+    return finite[-1][0]

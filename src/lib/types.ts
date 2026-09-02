@@ -66,6 +66,8 @@ export type PowerMode = 'lift' | 'no-harm'
 
 export interface PowerConfig {
   mode: PowerMode
+  /** Must match what the real analysis will run: it dominates the answer. */
+  priorLevelSd: number
   /** Negative fraction: -0.02 means "a drop worse than 2% is unacceptable". */
   harmThreshold: number
   alpha: number
