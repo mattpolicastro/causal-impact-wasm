@@ -169,9 +169,9 @@ export function assess(
   if (nCov === 0) {
     items.push({
       id: 'covariates',
-      status: 'fail',
-      title: 'No control series — this result is probably not trustworthy',
-      detail: 'The counterfactual is extrapolated from the trend alone. Measured on a real daily conversion series, running this with no controls reported an effect on 38% of placebo windows where nothing had happened — against the 5% you are aiming for. The same series with one good control came in at 6%. Add a control that tracks your metric but was untouched by the intervention (the same metric on another device, market or category). Nothing else recovers this: flagging anomalous dates was measured to make no difference.',
+      status: 'warn',
+      title: 'No control series',
+      detail: 'The counterfactual is extrapolated from the trend alone, which is weak. Add control series that track your metric but were not touched by the intervention (other markets, unaffected products…).',
     })
   } else if (nCov > preLength / 10) {
     items.push({
@@ -182,8 +182,13 @@ export function assess(
     })
   }
 
-  // Flagged days inside the measured window contaminate the effect directly:
-  // whatever the sale did is being counted as intervention impact.
+  // Flagged days inside the measured window. Placebo sweeps on a real daily
+  // conversion series, with a known +2% effect injected, put numbers on this:
+  //   with a control:  clean window estimated +2.80%, sale in window +2.55%,
+  //                    dropping the flagged days +2.68% — no material difference
+  //   no control:      sale in window +4.21%, dropping the days +2.65%
+  //   shortening the window to avoid a sale: 18% false positives against 6%
+  // Hence: informational when controls are present, a caution when they are not.
   if (data.flaggedLabels.length) {
     const flagged = new Set(data.flaggedLabels)
     let inPost = 0
@@ -194,30 +199,27 @@ export function assess(
       else inPre++
     }
     const postLength = config.postEnd - config.t0 + 1
+    const label = `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`
     if (inPost > 0 && nCov > 0) {
-      // Measured on a real series: with a decent control, a sale inside the
-      // window shifted a known +2% effect by less than a third of a point, and
-      // dropping those days recovered nothing. Worth knowing, not worth acting on.
       items.push({
         id: 'flagged-days',
         status: 'info',
-        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`,
-        detail: `${inPost} of ${postLength} days after the intervention are flagged in your file. Your control series covers those days too, which is what keeps this from mattering: on a real series with a good control, a sale inside the window moved a known +2% effect to +2.55% against +2.80% for a clean window, and dropping the days changed nothing. Leave them in and note it in the write-up. Do not shorten the window to avoid them — that traded a 6% false-positive rate for 18%.`,
+        title: label,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged. Your controls cover those days too, so this is unlikely to move the result — leave them in and note it. Shortening the window to avoid them tests worse than keeping them.`,
       })
     } else if (inPost > 0) {
-      const share = inPost / postLength
       items.push({
         id: 'flagged-days',
-        status: share > 0.15 ? 'fail' : 'warn',
-        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period, with no control series`,
-        detail: `${inPost} of ${postLength} days after the intervention are flagged, and there is no control to account for them. Measured on a real series, that combination inflated a known +2% effect to +4.21%; excluding the flagged days brought it back to +2.65%. So excluding them would help here — but it does not rescue the run, because without a control this series produced false positives on 20-67% of windows where nothing had happened. Get a control series first; that is the fix.`,
+        status: 'warn',
+        title: `${label}, with no control series`,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged, with no control to account for them. Whatever happened on those days is being read as intervention impact. Excluding them gives a cleaner estimate here, or report the effect as including them.`,
       })
     } else if (inPre > 0) {
       items.push({
         id: 'flagged-days',
         status: 'info',
         title: `${inPre} flagged days in the pre-period, none in the measured window`,
-        detail: 'Good: the period being measured is clean. The flagged days sit in the training history, where a decent control series absorbs them.',
+        detail: 'The period being measured is clean. The flagged days sit in the training history.',
       })
     }
   }
