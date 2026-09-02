@@ -194,13 +194,23 @@ export function assess(
       else inPre++
     }
     const postLength = config.postEnd - config.t0 + 1
-    if (inPost > 0) {
+    if (inPost > 0 && nCov > 0) {
+      // Measured on a real series: with a decent control, a sale inside the
+      // window shifted a known +2% effect by less than a third of a point, and
+      // dropping those days recovered nothing. Worth knowing, not worth acting on.
+      items.push({
+        id: 'flagged-days',
+        status: 'info',
+        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged in your file. Your control series covers those days too, which is what keeps this from mattering: on a real series with a good control, a sale inside the window moved a known +2% effect to +2.55% against +2.80% for a clean window, and dropping the days changed nothing. Leave them in and note it in the write-up. Do not shorten the window to avoid them — that traded a 6% false-positive rate for 18%.`,
+      })
+    } else if (inPost > 0) {
       const share = inPost / postLength
       items.push({
         id: 'flagged-days',
         status: share > 0.15 ? 'fail' : 'warn',
-        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`,
-        detail: `${inPost} of ${postLength} days after the intervention are flagged in your file. Whatever happened on them is being counted as intervention impact — the model has no way to tell the two apart. Either move the window so it avoids them, or report the effect knowing it includes them. Adding the flag as a covariate does not fix this and was measured to make results worse, because one coefficient cannot describe sales that move the metric in different directions.`,
+        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period, with no control series`,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged, and there is no control to account for them. Measured on a real series, that combination inflated a known +2% effect to +4.21%; excluding the flagged days brought it back to +2.65%. So excluding them would help here — but it does not rescue the run, because without a control this series produced false positives on 20-67% of windows where nothing had happened. Get a control series first; that is the fix.`,
       })
     } else if (inPre > 0) {
       items.push({
