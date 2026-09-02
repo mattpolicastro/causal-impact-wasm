@@ -123,6 +123,38 @@ def test_rejects_gaps_in_history():
         power.simulate_power(y, X, durations=[14], effects=[0.05], seed=1)
 
 
+def test_gaps_do_not_scramble_the_weekday():
+    """Excluding rows shifts everything after them, so array position stops
+    meaning calendar position. Resampling must follow the calendar, not the
+    index — this is what dropping a sale week broke."""
+    rng = np.random.default_rng(0)
+    cal = np.arange(140)
+    resid = 5.0 * np.sin(2 * np.pi * cal / 7)
+
+    # Drop 3 days, as an exclusion would: everything after shifts by 3.
+    drop = np.r_[np.arange(30, 33)]
+    keep = np.setdiff1d(cal, drop)
+    r_gap, pos = resid[keep], cal[keep]
+
+    lag7 = lambda a: np.mean([np.corrcoef(r[:-7], r[7:])[0, 1] for r in a])
+
+    # Told the truth about the calendar, the weekly cycle survives.
+    aware = power._block_bootstrap(r_gap, 70, 400, 7, rng, phase=0, positions=pos)
+    assert lag7(aware) > 0.99
+
+    # Assuming array position is calendar position does not.
+    naive = power._block_bootstrap(r_gap, 70, 400, 7, rng, phase=0)
+    assert lag7(naive) < 0.9
+
+
+def test_positions_must_increase():
+    y, X = _history()
+    bad = np.arange(len(y))[::-1]
+    with pytest.raises(ValueError, match='increase'):
+        power.simulate_power(y, X, durations=[14], effects=[0.05],
+                             positions=bad, seed=1)
+
+
 def test_block_bootstrap_preserves_weekly_structure():
     """Day-by-day resampling would flatten the weekly cycle; blocks keep it.
     This is what stands in for the seasonal component the engine lacks."""

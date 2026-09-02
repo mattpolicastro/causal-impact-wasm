@@ -211,6 +211,10 @@ def run_power(payload):
         if X.shape[0] != len(y):
             raise ValueError('Covariate rows must match y.')
 
+    positions = payload.get('positions')
+    if positions is not None:
+        positions = np.asarray(positions, dtype=int)
+
     durations = [int(d) for d in payload['durations']]
     effects = [float(e) for e in payload['effects']]
     harm = payload.get('harm_threshold')
@@ -220,6 +224,7 @@ def run_power(payload):
         y, X,
         durations=durations,
         effects=effects,
+        positions=positions,
         alpha=float(payload.get('alpha', 0.05)),
         n_sims=int(payload.get('n_sims', 2000)),
         harm_threshold=None if harm is None else float(harm),

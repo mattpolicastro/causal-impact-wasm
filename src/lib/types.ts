@@ -88,6 +88,8 @@ export interface PowerPayload {
   covariates: Record<string, number[]>
   durations: number[]
   effects: number[]
+  /** Each row's place on the calendar; differs from its index once rows are excluded. */
+  positions: number[] | null
   alpha: number
   n_sims: number
   harm_threshold: number | null

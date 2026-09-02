@@ -90,36 +90,62 @@ MIN_TRAIN = 30          # refuse to plan off a history too short to fit
 DEFAULT_BLOCK = 7       # weekly blocks keep day-of-week structure in the noise
 
 
-def _block_bootstrap(resid, n_out, n_sims, block, rng, phase=0):
+def _block_bootstrap(resid, n_out, n_sims, block, rng, phase=0, positions=None):
     """Resample residuals in phase-aligned contiguous blocks: (n_sims, n_out).
 
     Sampling one day at a time throws away autocorrelation and day-of-week
     structure, making simulated series look tamer than the real thing. Blocks
     fix the autocorrelation, but blocks starting at arbitrary offsets still
     scramble the weekday: each block lands at a random phase, so a Tuesday
-    residual can end up on a Saturday. Restricting starts to multiples of
-    `block` keeps every resampled point on its own weekday.
+    residual can end up on a Saturday. Restricting starts to the weekly grid
+    keeps every resampled point on its own weekday.
 
-    `phase` is the position of the first output point within the weekly cycle,
-    so a post-period that does not begin on a multiple of `block` still lines up
-    with the calendar.
+    `positions` gives each residual's place on the calendar, which is not its
+    place in the array once rows have been excluded. Dropping a sale week shifts
+    everything after it: on one real series, 24% of rows ended up a different
+    weekday from the one the array index implied. So a block is usable only when
+    it starts on the weekly grid AND spans no gap, and both are checked against
+    `positions` rather than assumed.
+
+    `phase` is the calendar position of the first output point, so a post-period
+    that does not begin on a multiple of `block` still lines up.
     """
     block = max(1, min(block, len(resid) // 2))
-    n_whole = len(resid) // block
-    if n_whole < 2:                     # too little history to align; fall back
-        idx = rng.integers(0, len(resid), size=(n_sims, n_out))
-        return resid[idx]
-    phase %= block
-    n_blocks = int(np.ceil((n_out + phase) / block))
-    starts = block * rng.integers(0, n_whole, size=(n_sims, n_blocks))
-    idx = (starts[:, :, None] + np.arange(block)).reshape(n_sims, -1)
-    return resid[idx[:, phase:phase + n_out]]
+    if positions is None:
+        positions = np.arange(len(resid))
+    positions = np.asarray(positions)
+    phase = int(phase) % block
+
+    if block > 1:
+        head = np.arange(len(resid) - block + 1)
+        aligned = positions[head] % block == 0
+        contiguous = positions[head + block - 1] - positions[head] == block - 1
+        starts = head[aligned & contiguous]
+    else:
+        starts = np.arange(len(resid))
+
+    if len(starts) >= 2:
+        n_blocks = int(np.ceil((n_out + phase) / block))
+        pick = starts[rng.integers(0, len(starts), size=(n_sims, n_blocks))]
+        idx = (pick[:, :, None] + np.arange(block)).reshape(n_sims, -1)
+        return resid[idx[:, phase:phase + n_out]]
+
+    # Too few intact blocks to preserve autocorrelation. Keep the weekday match,
+    # which is the part that biases the answer, and give up the block structure.
+    pools = [np.where(positions % block == p)[0] for p in range(block)]
+    out = np.empty((n_sims, n_out))
+    for j in range(n_out):
+        pool = pools[(phase + j) % block]
+        if len(pool) == 0:
+            pool = np.arange(len(resid))
+        out[:, j] = resid[pool[rng.integers(0, len(pool), size=n_sims)]]
+    return out
 
 
-def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
-                   harm_threshold=None, power_target=0.8, block=DEFAULT_BLOCK,
-                   prior_level_sd=0.01, niter=1000, burn=None, seed=None,
-                   progress=None):
+def simulate_power(y, X=None, *, durations, effects, positions=None, alpha=0.05,
+                   n_sims=2000, harm_threshold=None, power_target=0.8,
+                   block=DEFAULT_BLOCK, prior_level_sd=0.01, niter=1000,
+                   burn=None, seed=None, progress=None):
     """Estimate detection rates over a grid of test durations and effect sizes.
 
     `y` and `X` are the full historical series — no intervention has occurred.
@@ -151,6 +177,11 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
     `effects` and `harm_threshold` are relative, as fractions (0.02 is a 2%
     lift; a harm threshold of -0.02 means "a drop worse than 2% is
     unacceptable").
+
+    `positions` is each row's place on the calendar, counted in time steps from
+    the first row. Pass it whenever rows have been excluded, or the weekly
+    structure of the noise is resampled onto the wrong weekdays. Without gaps it
+    is just 0..n-1, which is the default.
     """
     y = np.asarray(y, dtype=float)
     durations = sorted({int(d) for d in durations})
@@ -172,6 +203,13 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
             f'Cannot plan a {durations[-1]}-point test from {n_train} points of '
             f'history: the stand-in future would be most of the series. Pull '
             f'more history or shorten the longest duration considered.')
+
+    if positions is not None:
+        positions = np.asarray(positions, dtype=int)
+        if positions.shape != y.shape:
+            raise ValueError('Positions must have the same length as the response.')
+        if np.any(np.diff(positions) <= 0):
+            raise ValueError('Positions must increase; they index the calendar.')
 
     if X is not None:
         X = np.asarray(X, dtype=float)
@@ -230,8 +268,10 @@ def simulate_power(y, X=None, *, durations, effects, alpha=0.05, n_sims=2000,
         truth = bayes.structural_paths(draws, Xs_post, n_post, rng) * sd_y + mu_y
         picks = rng.integers(0, truth.shape[0], size=n_sims)
         T = truth[picks].sum(axis=1)
+        # The stand-in future continues the calendar from the last kept row.
+        post_phase = (positions[-1] + 1 - n_post) if positions is not None else n_train - n_post
         N = _block_bootstrap(resid, n_post, n_sims, block, rng,
-                             phase=n_train).sum(axis=1)
+                             phase=post_phase, positions=positions).sum(axis=1)
 
         ok = T > 0
         crit = np.full(n_sims, np.inf)          # T <= 0 is never detectable

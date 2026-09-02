@@ -204,6 +204,34 @@ export function detectOutlierLabels(data: PreparedData, z = 3): string[] {
   return out
 }
 
+/**
+ * Each row's position on the calendar, in whole time steps from the first row.
+ * Contiguous data gives 0..n-1; once rows are excluded the gaps show up here,
+ * which is what keeps day-of-week resampling honest.
+ *
+ * The step is the median gap rather than a day, so weekly or monthly series
+ * count in their own units instead of being treated as full of holes.
+ */
+export function calendarPositions(index: IndexInfo): number[] {
+  const xs = index.xs
+  if (xs.length < 2) return xs.map((_, i) => i)
+  const steps: number[] = []
+  for (let i = 1; i < xs.length; i++) {
+    const d = xs[i] - xs[i - 1]
+    if (d > 0) steps.push(d)
+  }
+  if (steps.length === 0) return xs.map((_, i) => i)
+  steps.sort((a, b) => a - b)
+  const step = steps[Math.floor(steps.length / 2)]
+  if (!(step > 0)) return xs.map((_, i) => i)
+  const pos = xs.map((x) => Math.round((x - xs[0]) / step))
+  // Ties would break the strictly-increasing contract the engine checks.
+  for (let i = 1; i < pos.length; i++) {
+    if (pos[i] <= pos[i - 1]) pos[i] = pos[i - 1] + 1
+  }
+  return pos
+}
+
 export function makePowerPayload(
   data: PreparedData,
   config: PowerConfig,
@@ -214,6 +242,7 @@ export function makePowerPayload(
     covariates: data.covariates,
     durations: config.durations,
     effects: config.effects,
+    positions: calendarPositions(data.index),
     alpha: config.alpha,
     n_sims: config.nSims,
     harm_threshold: config.mode === 'no-harm' ? config.harmThreshold : null,
