@@ -169,9 +169,9 @@ export function assess(
   if (nCov === 0) {
     items.push({
       id: 'covariates',
-      status: 'warn',
-      title: 'No control series',
-      detail: 'The counterfactual is extrapolated from the trend alone, which is weak. Add control series that track your metric but were not touched by the intervention (other markets, unaffected products…).',
+      status: 'fail',
+      title: 'No control series — this result is probably not trustworthy',
+      detail: 'The counterfactual is extrapolated from the trend alone. Measured on a real daily conversion series, running this with no controls reported an effect on 38% of placebo windows where nothing had happened — against the 5% you are aiming for. The same series with one good control came in at 6%. Add a control that tracks your metric but was untouched by the intervention (the same metric on another device, market or category). Nothing else recovers this: flagging anomalous dates was measured to make no difference.',
     })
   } else if (nCov > preLength / 10) {
     items.push({
@@ -180,6 +180,36 @@ export function assess(
       title: `Many covariates (${nCov}) for the pre-period length`,
       detail: 'Lots of controls relative to training data invites overfitting. The Bayesian engine prunes automatically; still, prefer a few well-chosen controls.',
     })
+  }
+
+  // Flagged days inside the measured window contaminate the effect directly:
+  // whatever the sale did is being counted as intervention impact.
+  if (data.flaggedLabels.length) {
+    const flagged = new Set(data.flaggedLabels)
+    let inPost = 0
+    let inPre = 0
+    for (let i = config.preStart; i <= config.postEnd; i++) {
+      if (!flagged.has(data.index.labels[i])) continue
+      if (i >= config.t0) inPost++
+      else inPre++
+    }
+    const postLength = config.postEnd - config.t0 + 1
+    if (inPost > 0) {
+      const share = inPost / postLength
+      items.push({
+        id: 'flagged-days',
+        status: share > 0.15 ? 'fail' : 'warn',
+        title: `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged in your file. Whatever happened on them is being counted as intervention impact — the model has no way to tell the two apart. Either move the window so it avoids them, or report the effect knowing it includes them. Adding the flag as a covariate does not fix this and was measured to make results worse, because one coefficient cannot describe sales that move the metric in different directions.`,
+      })
+    } else if (inPre > 0) {
+      items.push({
+        id: 'flagged-days',
+        status: 'info',
+        title: `${inPre} flagged days in the pre-period, none in the measured window`,
+        detail: 'Good: the period being measured is clean. The flagged days sit in the training history, where a decent control series absorbs them.',
+      })
+    }
   }
 
   const avg = result.summary.average

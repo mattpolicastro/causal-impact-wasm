@@ -33,6 +33,8 @@ export interface ChartSpec {
   height?: number
   syncKey?: string
   shade?: { fromX: number; toX: number; color: string } | null
+  /** x values to stripe, e.g. sale days. Drawn under the series. */
+  marks?: { xs: number[]; color: string } | null
   onClickIdx?: (idx: number) => void
 }
 
@@ -40,14 +42,28 @@ function markerPlugin(spec: ChartSpec): uPlot.Plugin {
   return {
     hooks: {
       drawClear: (u) => {
-        if (!spec.shade) return
         const { ctx } = u
-        const x0 = u.valToPos(spec.shade.fromX, 'x', true)
-        const x1 = u.valToPos(spec.shade.toX, 'x', true)
-        ctx.save()
-        ctx.fillStyle = spec.shade.color
-        ctx.fillRect(x0, u.bbox.top, x1 - x0, u.bbox.height)
-        ctx.restore()
+        if (spec.shade) {
+          const x0 = u.valToPos(spec.shade.fromX, 'x', true)
+          const x1 = u.valToPos(spec.shade.toX, 'x', true)
+          ctx.save()
+          ctx.fillStyle = spec.shade.color
+          ctx.fillRect(x0, u.bbox.top, x1 - x0, u.bbox.height)
+          ctx.restore()
+        }
+        if (spec.marks && spec.marks.xs.length) {
+          // One stripe per flagged point, a step wide so consecutive days read
+          // as a block rather than a picket fence.
+          const step = spec.xs.length > 1 ? spec.xs[1] - spec.xs[0] : 1
+          ctx.save()
+          ctx.fillStyle = spec.marks.color
+          for (const x of spec.marks.xs) {
+            const a = u.valToPos(x - step / 2, 'x', true)
+            const b = u.valToPos(x + step / 2, 'x', true)
+            ctx.fillRect(a, u.bbox.top, Math.max(b - a, 1), u.bbox.height)
+          }
+          ctx.restore()
+        }
       },
       draw: (u) => {
         const { ctx } = u
