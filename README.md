@@ -55,7 +55,9 @@ cd py && uv venv --python 3.14 .venv \
 The Python pins mirror `pyodide-lock.json` for the Pyodide version in
 `src/lib/worker/pyodide.worker.ts` — keep them in lockstep when bumping Pyodide.
 
-Deploys are manual: `gh workflow run deploy-pages`.
+Deploys are manual: `gh workflow run deploy-pages`. To build for a different
+sub-path (e.g. alphabeta.tools' `/lab/pre-post/`), set `BASE_PATH`:
+`BASE_PATH=/lab/pre-post/ npm run build`.
 
 ### Validation
 
