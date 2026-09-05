@@ -1,5 +1,58 @@
 # WORKLOG
 
+## 2026-09-04 — First external contribution: "Plan a test" mode + constant-covariate fix
+
+- **Merged PR #1** (@BrokLori, 6 commits): prospective power simulation — "how
+  long must this test run?", estimated from history before any intervention has
+  happened. New `py/power.py` + 15 tests, `task: 'power'` dispatch in
+  `runner.py`, a "Measure an impact" / "Plan a test" mode switch, and
+  exclude-column parsing so the event calendar travels in the CSV.
+- Review confirmed the claims: `structural_paths()` split out of
+  `posterior_predict()` preserves RNG draw order, so output is bit-identical to
+  main (checked directly) and `test_r_parity` still passes; `npm run check` 0
+  errors, 2 pre-existing warnings.
+- **Two findings of hers worth keeping.** `prior_level_sd` dominates the
+  planning answer — MDE at 84 days was 2.70% at 0.001, 9.08% at 0.01, 63.12%
+  at 0.1, so the two `ModelConfig` presets are not a minor tuning knob. And
+  day-of-week on real e-commerce data is ±6%, not the ±30% our synthetic
+  fixtures assume: the missing `nseasons` support in the Bayesian engine is
+  worth having but is *not* what is costing accuracy on real series.
+- Counterintuitive result the planner exposes: whether a longer test helps
+  depends on which variance term dominates. Good controls collapse `sigma_obs`,
+  the random-walk level takes over, and MDE grows as sqrt(N) — a longer test
+  becomes actively *worse*. The better the control series, the sooner that
+  happens.
+- **Constant-covariate crash fixed** (`6792648`; she reported it, traced here).
+  Broke all three entrypoints for different reasons: the MLE path standardizes
+  with `std.fillna(1)` (`causalimpact/misc.py`), which catches an all-NaN column
+  but not a zero one, so 0/0 → NaN and statsmodels rejects the design matrix;
+  the Bayesian path already guards the divide (`sd_x[sd_x == 0] = 1.0`) but is
+  left with a zero column that makes the spike-and-slab marginal likelihood
+  singular. **Each engine carries exactly the guard the other one lacks**, and
+  neither is sufficient — so the fix belongs in `run()` at the contract
+  boundary, not in either engine.
+- Wider than reported: it also fires when a column is flat across the
+  pre-period but moves afterwards (a channel that was zero until launch), so
+  the check looks at the window the engine actually fits and standardizes on.
+  Near-constant is fine — 1e-12 relative jitter runs clean in both engines — so
+  the trigger is exact zero variance; a tolerance would silently discard
+  legitimate steady controls.
+- Tests hold the fix to *lossless*, not "does not crash": with the flat column
+  dropped, series and summary are identical to omitting it from the payload,
+  including the fallback to a no-covariate run. **54 tests pass** (was 29).
+- **Open — `recommended_duration` is seed-unstable.** Measured 21 to 84 days
+  across 12 seeds on one fixed series. The MDE curve underneath is precise
+  (sd ≈ 0.1pp on 2–3pp values); the knee test in `_recommend` compares
+  neighbours whose difference is the same size as its own noise. Merged
+  knowingly — the full MDE table is shown alongside the headline. Options:
+  average the knee over several RNG streams, normalise the threshold per time
+  point rather than per step (the grid steps by 7 then by 14), or drop the
+  single number for a banded curve.
+- **Open — `dropped_covariates`** is returned and declared in `types.ts` but no
+  UI reads it, so a constant column is currently dropped silently. Relatedly,
+  `inferMapping` still auto-selects constant columns; now harmless rather than
+  fatal, but a padded export still gets one picked for it.
+
 ## 2026-08-19 (evening) — validation: R parity, fixtures, stress harness
 
 - **R parity (gold standard)**: compiled R CausalImpact 1.4.1 + bsts 0.9.11
