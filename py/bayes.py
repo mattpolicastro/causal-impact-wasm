@@ -168,16 +168,28 @@ def gibbs_fit(y, X, niter, burn, prior_level_sd, seed, progress=None):
     return draws
 
 
+def structural_paths(draws, X_post, n_post, rng):
+    """Latent post-period paths (level + regression), WITHOUT observation noise.
+
+    This is the counterfactual the model believes in, as opposed to a draw of
+    what would be measured. Power simulation needs the two separated so real
+    bootstrapped residuals can supply the noise instead of a Gaussian term.
+    """
+    keep = draws['mu'].shape[0]
+    level_sd = np.sqrt(draws['sigma_level2'])[:, None]
+    steps = rng.standard_normal((keep, n_post)) * level_sd
+    mu_paths = draws['mu'][:, -1:] + np.cumsum(steps, axis=1)
+    reg = draws['beta'] @ X_post.T if X_post is not None and X_post.shape[1] else 0.0
+    return mu_paths + reg
+
+
 def posterior_predict(draws, X_post, n_post, seed):
     """Simulate the posterior predictive for the post period: (keep, n_post)."""
     rng = np.random.default_rng(seed + 1 if seed is not None else None)
     keep = draws['mu'].shape[0]
-    level_sd = np.sqrt(draws['sigma_level2'])[:, None]
     obs_sd = np.sqrt(draws['sigma_obs2'])[:, None]
-    steps = rng.standard_normal((keep, n_post)) * level_sd
-    mu_paths = draws['mu'][:, -1:] + np.cumsum(steps, axis=1)
-    reg = draws['beta'] @ X_post.T if X_post is not None and X_post.shape[1] else 0.0
-    return mu_paths + reg + rng.standard_normal((keep, n_post)) * obs_sd
+    paths = structural_paths(draws, X_post, n_post, rng)
+    return paths + rng.standard_normal((keep, n_post)) * obs_sd
 
 
 def fitted_pre(draws, X_pre, seed):

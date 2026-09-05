@@ -9,6 +9,7 @@ import summaryPy from '../../../py/causalimpact/summary.py?raw'
 import reportTmpl from '../../../py/causalimpact/templates/report?raw'
 import summaryTmpl from '../../../py/causalimpact/templates/summary?raw'
 import bayesPy from '../../../py/bayes.py?raw'
+import powerPy from '../../../py/power.py?raw'
 import runnerPy from '../../../py/runner.py?raw'
 
 const PYODIDE_VERSION = '314.0.5'
@@ -24,6 +25,7 @@ const FILES: Record<string, string> = {
   '/app/causalimpact/templates/report': reportTmpl,
   '/app/causalimpact/templates/summary': summaryTmpl,
   '/app/bayes.py': bayesPy,
+  '/app/power.py': powerPy,
   '/app/runner.py': runnerPy,
 }
 

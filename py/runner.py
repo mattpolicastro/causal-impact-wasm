@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import bayes
+import power
 from causalimpact import CausalImpact
 from causalimpact.misc import get_z_score
 from causalimpact.summary import REPORT_TMPL, SUMMARY_TMPL
@@ -199,7 +200,48 @@ def run_bayes(payload):
     }
 
 
+def run_power(payload):
+    """Prospective power sweep. No intervention has happened, so unlike run()
+    there is no pre/post split — the whole series is history."""
+    y = np.asarray(payload['y'], dtype=float)
+    covariates = payload.get('covariates') or {}
+    X = None
+    if covariates:
+        X = np.column_stack([np.asarray(v, dtype=float) for v in covariates.values()])
+        if X.shape[0] != len(y):
+            raise ValueError('Covariate rows must match y.')
+
+    positions = payload.get('positions')
+    if positions is not None:
+        positions = np.asarray(positions, dtype=int)
+
+    durations = [int(d) for d in payload['durations']]
+    effects = [float(e) for e in payload['effects']]
+    harm = payload.get('harm_threshold')
+    seed = payload.get('seed')
+
+    result = power.simulate_power(
+        y, X,
+        durations=durations,
+        effects=effects,
+        positions=positions,
+        alpha=float(payload.get('alpha', 0.05)),
+        n_sims=int(payload.get('n_sims', 2000)),
+        harm_threshold=None if harm is None else float(harm),
+        power_target=float(payload.get('power_target', 0.8)),
+        prior_level_sd=float(payload.get('prior_level_sd', 0.01)),
+        niter=int(payload.get('niter', 1000)),
+        seed=None if seed is None else int(seed),
+        progress=payload.get('_progress'),
+    )
+    result['ok'] = True
+    result['covariate_names'] = list(covariates.keys())
+    return result
+
+
 def run(payload):
+    if payload.get('task') == 'power':
+        return run_power(payload)
     if payload.get('engine') == 'bayes':
         return run_bayes(payload)
     y = payload['y']

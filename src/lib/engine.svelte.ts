@@ -1,4 +1,11 @@
-import type { AnalysisResult, RunPayload, WorkerResponse } from './types'
+import type {
+  AnalysisResult,
+  PowerPayload,
+  PowerResult,
+  RunPayload,
+  WorkerRequest,
+  WorkerResponse,
+} from './types'
 
 export type EngineStage =
   | 'idle'
@@ -15,8 +22,10 @@ export const engine = $state({
 })
 
 let worker: Worker | null = null
+// One request in flight at a time; the caller knows which result shape it asked
+// for, so the promise is typed at the call site rather than here.
 let pending: {
-  resolve: (r: AnalysisResult) => void
+  resolve: (r: never) => void
   reject: (e: Error) => void
 } | null = null
 
@@ -42,7 +51,7 @@ function ensureWorker(): Worker {
       engine.stage = 'ready'
     } else if (msg.type === 'result') {
       engine.stage = 'ready'
-      settle((p) => p.resolve(msg.result))
+      settle((p) => p.resolve(msg.result as never))
     } else if (msg.type === 'error') {
       engine.stage = 'ready'
       settle((p) => p.reject(new Error(msg.error)))
@@ -63,15 +72,23 @@ export function warmUp() {
   ensureWorker().postMessage({ type: 'init' })
 }
 
-export function runAnalysis(payload: RunPayload): Promise<AnalysisResult> {
+function request<T>(message: WorkerRequest): Promise<T> {
   engine.error = null
   const w = ensureWorker()
-  return new Promise((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     pending?.reject(new Error('Superseded by a new run.'))
-    pending = { resolve, reject }
+    pending = { resolve: resolve as (r: never) => void, reject }
     engine.running = true
-    w.postMessage({ type: 'run', payload })
+    w.postMessage(message)
   })
+}
+
+export function runAnalysis(payload: RunPayload): Promise<AnalysisResult> {
+  return request<AnalysisResult>({ type: 'run', payload })
+}
+
+export function runPower(payload: PowerPayload): Promise<PowerResult> {
+  return request<PowerResult>({ type: 'power', payload })
 }
 
 export function cancelRun() {

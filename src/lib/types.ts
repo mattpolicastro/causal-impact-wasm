@@ -20,6 +20,8 @@ export interface PreparedData {
   index: IndexInfo
   y: number[]
   covariates: Record<string, number[]>
+  /** Labels flagged by an exclude column in the source file, if there was one. */
+  flaggedLabels: string[]
 }
 
 export type Engine = 'bayes' | 'mle'
@@ -61,9 +63,65 @@ export interface AnalysisResult {
   inclusion_probs?: Record<string, number>
 }
 
+/** Planning a test that has not run yet: history only, no intervention date. */
+export type PowerMode = 'lift' | 'no-harm'
+
+export interface PowerConfig {
+  mode: PowerMode
+  /** Labels (ISO dates or row numbers) to drop before fitting. */
+  excludedLabels: string[]
+  /** Must match what the real analysis will run: it dominates the answer. */
+  priorLevelSd: number
+  /** Negative fraction: -0.02 means "a drop worse than 2% is unacceptable". */
+  harmThreshold: number
+  alpha: number
+  powerTarget: number
+  durations: number[]
+  effects: number[]
+  nSims: number
+  seed: number
+}
+
+export interface PowerPayload {
+  task: 'power'
+  y: number[]
+  covariates: Record<string, number[]>
+  durations: number[]
+  effects: number[]
+  /** Each row's place on the calendar; differs from its index once rows are excluded. */
+  positions: number[] | null
+  alpha: number
+  n_sims: number
+  harm_threshold: number | null
+  power_target: number
+  prior_level_sd: number
+  niter: number
+  seed: number
+}
+
+export interface PowerResult {
+  durations: number[]
+  effects: number[]
+  /** power[durationIndex][effectIndex], each 0..1 */
+  power: number[][]
+  /** Smallest detectable effect at power_target, one per duration. */
+  mde: number[]
+  false_positive: number[]
+  recommended_duration: number | null
+  mode: 'superiority' | 'non_inferiority'
+  harm_threshold: number | null
+  power_target: number
+  alpha: number
+  /** Points the model was fit on: the whole history, for every duration. */
+  n_train: number
+  n_sims: number
+  covariate_names: string[]
+}
+
 export type WorkerRequest =
   | { type: 'init' }
   | { type: 'run'; payload: RunPayload }
+  | { type: 'power'; payload: PowerPayload }
 
 export interface RunPayload {
   engine: Engine
@@ -84,5 +142,5 @@ export type WorkerResponse =
   | { type: 'status'; stage: 'loading-runtime' | 'loading-packages' | 'installing' }
   | { type: 'ready' }
   | { type: 'progress'; done: number; total: number }
-  | { type: 'result'; result: AnalysisResult }
+  | { type: 'result'; result: AnalysisResult | PowerResult }
   | { type: 'error'; error: string }
