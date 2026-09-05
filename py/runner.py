@@ -239,11 +239,60 @@ def run_power(payload):
     return result
 
 
-def run(payload):
+def _drop_constant_covariates(payload):
+    """Remove zero-variance covariates, which break every engine differently.
+
+    The MLE path standardizes with `std.fillna(1)` (causalimpact/misc.py): that
+    catches an all-NaN column but not a zero one, so 0/0 turns the column NaN and
+    statsmodels rejects the design matrix. The Bayesian path already guards the
+    divide (`sd_x[sd_x == 0] = 1.0`) but is then left with a zero column, which
+    makes the spike-and-slab marginal likelihood singular and fails in cholesky.
+    Each engine happens to carry exactly the guard the other one lacks, and
+    neither is sufficient on its own, so the fix belongs here at the contract
+    boundary rather than in either engine.
+
+    Dropping is lossless: a column with no variance is collinear with the level
+    term and carries no information. Verified — the series and summary come out
+    identical to omitting the column from the payload entirely.
+
+    The window that matters is whatever the engine fits and standardizes on: the
+    pre-period for an analysis, the whole series when planning, since no
+    intervention has happened yet. A column flat across the pre-period but moving
+    afterwards (a channel that was zero until launch) breaks it just the same,
+    so the check cannot look at the full series for the analysis paths.
+    """
+    covariates = payload.get('covariates') or {}
+    if not covariates:
+        return covariates, []
     if payload.get('task') == 'power':
-        return run_power(payload)
-    if payload.get('engine') == 'bayes':
-        return run_bayes(payload)
+        lo, hi = 0, None
+    else:
+        p0, p1 = (int(v) for v in payload['pre_period'])
+        lo, hi = p0, p1 + 1
+    kept, dropped = {}, []
+    for name, values in covariates.items():
+        window = np.asarray(values, dtype=float)[lo:hi]
+        if window.size and np.nanstd(window) == 0:
+            dropped.append(name)
+        else:
+            kept[name] = values
+    return kept, dropped
+
+
+def run(payload):
+    kept, dropped = _drop_constant_covariates(payload)
+    payload = dict(payload, covariates=kept)
+    if payload.get('task') == 'power':
+        result = run_power(payload)
+    elif payload.get('engine') == 'bayes':
+        result = run_bayes(payload)
+    else:
+        result = _run_mle(payload)
+    result['dropped_covariates'] = dropped
+    return result
+
+
+def _run_mle(payload):
     y = payload['y']
     covariates = payload.get('covariates') or {}
     n = len(y)

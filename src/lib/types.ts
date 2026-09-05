@@ -61,6 +61,14 @@ export interface AnalysisResult {
   report: string
   engine: Engine
   inclusion_probs?: Record<string, number>
+  /**
+   * Covariates removed before fitting because they had no variance over the
+   * window the engine standardizes on. Zero-variance columns carry no
+   * information and break every engine, so they are dropped rather than
+   * passed through; surface them so the analyst knows their column was
+   * ignored.
+   */
+  dropped_covariates?: string[]
 }
 
 /** Planning a test that has not run yet: history only, no intervention date. */
@@ -116,6 +124,14 @@ export interface PowerResult {
   n_train: number
   n_sims: number
   covariate_names: string[]
+  /**
+   * Covariates removed before fitting because they had no variance over the
+   * window the engine standardizes on. Zero-variance columns carry no
+   * information and break every engine, so they are dropped rather than
+   * passed through; surface them so the analyst knows their column was
+   * ignored.
+   */
+  dropped_covariates?: string[]
 }
 
 export type WorkerRequest =
