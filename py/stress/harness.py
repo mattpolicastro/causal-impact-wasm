@@ -6,9 +6,20 @@ reports false-positive rate, power, CI coverage, estimation error, and how
 often the guardrails flag runs — including the FPR among runs the guardrails
 would have let through ("protected FPR").
 
+`prior_level_sd` can be swept alongside the scenarios. It is the setting that
+most determines whether a result is trustworthy, and how much it matters is
+data-dependent rather than fixed: on one real daily conversion series the
+no-covariate false-positive rate fell from 38% to 4% between 0.01 and 0.02,
+while on `null-no-covariates` here no value rescues it — 68% at 0.01 and still
+22% at 0.1. Sweeping is the only way to see where the usable range sits for a
+given shape of data.
+
 Usage (from py/, with the pinned venv):
     .venv/bin/python stress/harness.py --reps 100 --out stress
-Writes stress/REPORT.md and stress/results.json.
+    .venv/bin/python stress/harness.py --reps 100 --priors 0.005 0.01 0.02 0.03 0.1
+
+A single prior renders exactly as before; several add a prior column and a
+summary of where each scenario stops being trustworthy.
 """
 
 import argparse
@@ -79,7 +90,7 @@ def simulate(sc: Scenario, seed: int):
     return y, covariates
 
 
-def payload_for(sc, y, covariates, engine, pre, post, seed):
+def payload_for(sc, y, covariates, engine, pre, post, seed, prior=0.01):
     return {
         'engine': engine,
         'y': y.tolist(),
@@ -89,7 +100,7 @@ def payload_for(sc, y, covariates, engine, pre, post, seed):
         'alpha': ALPHA,
         'seed': seed,
         'standardize': True,
-        'prior_level_sd': 0.01,
+        'prior_level_sd': prior,
         'n_sims': 500,   # mle
         'niter': 800,    # bayes
         'burn': 200,
@@ -117,15 +128,16 @@ def significant(result):
 
 
 def run_one(args):
-    sc, engine, rep = args
+    sc, engine, prior, rep = args
     seed = 20_000 + rep
     y, covariates = simulate(sc, seed)
     pre = (0, sc.n_pre - 1)
     post = (sc.n_pre, sc.n_pre + sc.n_post - 1)
     main = json.loads(runner.run_json(json.dumps(
-        payload_for(sc, y, covariates, engine, pre, post, seed))))
+        payload_for(sc, y, covariates, engine, pre, post, seed, prior))))
     if not main['ok']:
-        return {'scenario': sc.name, 'engine': engine, 'rep': rep, 'error': main['error']}
+        return {'scenario': sc.name, 'engine': engine, 'prior': prior,
+                'rep': rep, 'error': main['error']}
 
     avg = main['summary']['average']
     # Guardrails, as the UI applies them (placebo window mirrors the real
@@ -135,7 +147,7 @@ def run_one(args):
     fake_t0 = sc.n_pre - window
     placebo = json.loads(runner.run_json(json.dumps(
         payload_for(sc, y, covariates, engine, (pre[0], fake_t0 - 1),
-                    (fake_t0, sc.n_pre - 1), seed))))
+                    (fake_t0, sc.n_pre - 1), seed, prior))))
     placebo_failed = placebo['ok'] and significant(placebo)
     guard_flagged = bool(placebo_failed or (r2 is not None and r2 < 0.3)
                          or sc.n_pre < 30)
@@ -143,6 +155,7 @@ def run_one(args):
     return {
         'scenario': sc.name,
         'engine': engine,
+        'prior': prior,
         'rep': rep,
         'true_effect': sc.effect,
         'estimate': avg['rel_effect'],
@@ -158,10 +171,12 @@ def run_one(args):
 
 def summarize(rows):
     out = []
-    keys = sorted({(r['scenario'], r['engine']) for r in rows if 'error' not in r})
-    for scenario, engine in keys:
+    keys = sorted({(r['scenario'], r['engine'], r['prior'])
+                   for r in rows if 'error' not in r})
+    for scenario, engine, prior in keys:
         rs = [r for r in rows if r.get('scenario') == scenario
-              and r.get('engine') == engine and 'error' not in r]
+              and r.get('engine') == engine and r.get('prior') == prior
+              and 'error' not in r]
         n = len(rs)
         sig = [r for r in rs if r['significant']]
         clean = [r for r in rs if not r['guard_flagged']]
@@ -170,6 +185,7 @@ def summarize(rows):
         out.append({
             'scenario': scenario,
             'engine': engine,
+            'prior': prior,
             'n': n,
             'sig_rate': len(sig) / n,
             'metric': 'FPR' if is_null else 'power',
@@ -184,21 +200,43 @@ def summarize(rows):
 
 
 def render_report(summary, reps):
+    priors = sorted({s['prior'] for s in summary})
+    swept = len(priors) > 1
+    pcol = ' Prior |' if swept else ''
+    psep = '---|' if swept else ''
     lines = [
         '# Stress-test report',
         '',
         f'{reps} replicates per scenario/engine · alpha = {ALPHA} · '
-        'guardrails mirrored from the UI (placebo re-run, pre-fit R² < 0.3, pre-period < 30).',
+        'guardrails mirrored from the UI (placebo re-run, pre-fit R² < 0.3, pre-period < 30).'
+        + (f' prior_level_sd swept over {", ".join(str(p) for p in priors)}.' if swept else ''),
         '',
-        '| Scenario | Engine | sig. rate | metric | coverage | MAE | guard flag rate | sig. rate when guards pass |',
-        '|---|---|---|---|---|---|---|---|',
+        f'| Scenario | Engine |{pcol} sig. rate | metric | coverage | MAE | guard flag rate '
+        '| sig. rate when guards pass |',
+        f'|---|---|{psep}---|---|---|---|---|---|',
     ]
     for s in summary:
         prot = ('—' if s['protected_sig_rate'] is None
                 else f"{s['protected_sig_rate']:.2f} (n={s['n_clean']})")
+        pcell = f" {s['prior']} |" if swept else ''
         lines.append(
-            f"| {s['scenario']} | {s['engine']} | {s['sig_rate']:.2f} | {s['metric']} "
+            f"| {s['scenario']} | {s['engine']} |{pcell} {s['sig_rate']:.2f} | {s['metric']} "
             f"| {s['coverage']:.2f} | {s['mae']:.3f} | {s['flag_rate']:.2f} | {prot} |")
+    if swept:
+        lines += ['', '## Where each scenario stops being trustworthy', '',
+                  'Largest prior whose false-positive rate still exceeds alpha by more than '
+                  'half, i.e. the setting an analyst should not be below. "none" means every '
+                  'swept value held; "all" means none did, and the prior is not the fix.', '',
+                  '| Scenario | Engine | overconfident at or below | usable from |',
+                  '|---|---|---|---|']
+        for scenario, engine in sorted({(s['scenario'], s['engine']) for s in summary
+                                        if s['metric'] == 'FPR'}):
+            rs = sorted((s for s in summary if s['scenario'] == scenario
+                         and s['engine'] == engine), key=lambda s: s['prior'])
+            bad = [s['prior'] for s in rs if s['sig_rate'] > ALPHA * 1.5]
+            ok = [s['prior'] for s in rs if s['sig_rate'] <= ALPHA * 1.5]
+            lines.append(f"| {scenario} | {engine} | "
+                         f"{max(bad) if bad else 'none'} | {min(ok) if ok else 'all fail'} |")
     lines += ['', '## Scenario definitions', '']
     for sc in SCENARIOS:
         lines.append(f"- **{sc.name}** — {sc.description} "
@@ -220,15 +258,18 @@ def main():
     ap.add_argument('--reps', type=int, default=100)
     ap.add_argument('--engines', nargs='+', default=['bayes', 'mle'])
     ap.add_argument('--scenarios', nargs='+', default=None)
+    ap.add_argument('--priors', nargs='+', type=float, default=[0.01],
+                    help='prior_level_sd values to sweep. One value reproduces '
+                         'the report exactly as before.')
     ap.add_argument('--out', default='stress')
     ap.add_argument('--workers', type=int, default=None)
     args = ap.parse_args()
 
     scenarios = [s for s in SCENARIOS
                  if args.scenarios is None or s.name in args.scenarios]
-    tasks = [(sc, engine, rep)
+    tasks = [(sc, engine, prior, rep)
              for sc in scenarios for engine in args.engines
-             for rep in range(args.reps)]
+             for prior in args.priors for rep in range(args.reps)]
     print(f'{len(tasks)} runs ({len(tasks) * 2} fits incl. placebo)…')
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(run_one, tasks, chunksize=4))
@@ -240,12 +281,15 @@ def main():
 
     out = Path(__file__).resolve().parent
     (out / 'results.json').write_text(json.dumps(
-        {'reps': args.reps, 'summary': summary, 'errors': errors,
+        {'reps': args.reps, 'priors': args.priors, 'summary': summary,
+         'errors': errors,
          'scenarios': [asdict(s) for s in scenarios]}, indent=1))
     (out / 'REPORT.md').write_text(render_report(summary, args.reps))
     print(f'Wrote {out}/REPORT.md')
+    swept = len(args.priors) > 1
     for s in summary:
-        print(f"{s['scenario']:28s} {s['engine']:5s} "
+        prior = f" p={s['prior']:<6}" if swept else ''
+        print(f"{s['scenario']:28s} {s['engine']:5s}{prior} "
               f"{s['metric']}={s['sig_rate']:.2f} cov={s['coverage']:.2f} "
               f"flag={s['flag_rate']:.2f}")
 
