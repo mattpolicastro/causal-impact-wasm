@@ -70,7 +70,21 @@ export function assess(
 ): DiagnosticItem[] {
   const items: DiagnosticItem[] = []
   const preLength = config.t0 - config.preStart
-  const nCov = Object.keys(data.covariates).length
+  // Count the covariates the engine actually fitted, not the ones supplied.
+  // Zero-variance columns are dropped at the runner boundary, so a single
+  // constant control would otherwise read as "has a control" everywhere below —
+  // silencing the no-control warning on a run that had none.
+  const dropped = result.dropped_covariates ?? []
+  const nCov = Object.keys(data.covariates).length - dropped.length
+
+  if (dropped.length) {
+    items.push({
+      id: 'dropped-covariates',
+      status: 'warn',
+      title: `${dropped.length === 1 ? 'Control series ignored' : `${dropped.length} control series ignored`}: ${dropped.join(', ')}`,
+      detail: `Never changes over the period the model trains on, so it carries no information and was dropped. Often a padded export, or a channel that was flat until it launched. Everything below counts ${nCov} usable control${nCov === 1 ? '' : 's'}.`,
+    })
+  }
 
   // Low R² mostly reflects noisy data, which the intervals already absorb by
   // widening (verified in the stress harness: misspecified-fit scenarios keep
@@ -180,6 +194,48 @@ export function assess(
       title: `Many covariates (${nCov}) for the pre-period length`,
       detail: 'Lots of controls relative to training data invites overfitting. The Bayesian engine prunes automatically; still, prefer a few well-chosen controls.',
     })
+  }
+
+  // Flagged days inside the measured window. Placebo sweeps on a real daily
+  // conversion series, with a known +2% effect injected, put numbers on this:
+  //   with a control:  clean window estimated +2.80%, sale in window +2.55%,
+  //                    dropping the flagged days +2.68% — no material difference
+  //   no control:      sale in window +4.21%, dropping the days +2.65%
+  //   shortening the window to avoid a sale: 18% false positives against 6%
+  // Hence: informational when controls are present, a caution when they are not.
+  if (data.flaggedLabels.length) {
+    const flagged = new Set(data.flaggedLabels)
+    let inPost = 0
+    let inPre = 0
+    for (let i = config.preStart; i <= config.postEnd; i++) {
+      if (!flagged.has(data.index.labels[i])) continue
+      if (i >= config.t0) inPost++
+      else inPre++
+    }
+    const postLength = config.postEnd - config.t0 + 1
+    const label = `${inPost} flagged ${inPost === 1 ? 'day falls' : 'days fall'} inside the measured period`
+    if (inPost > 0 && nCov > 0) {
+      items.push({
+        id: 'flagged-days',
+        status: 'info',
+        title: label,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged. Your controls cover those days too, so this is unlikely to move the result — leave them in and note it. Shortening the window to avoid them tests worse than keeping them.`,
+      })
+    } else if (inPost > 0) {
+      items.push({
+        id: 'flagged-days',
+        status: 'warn',
+        title: `${label}, with no control series`,
+        detail: `${inPost} of ${postLength} days after the intervention are flagged, with no control to account for them. Whatever happened on those days is being read as intervention impact. Excluding them gives a cleaner estimate here, or report the effect as including them.`,
+      })
+    } else if (inPre > 0) {
+      items.push({
+        id: 'flagged-days',
+        status: 'info',
+        title: `${inPre} flagged days in the pre-period, none in the measured window`,
+        detail: 'The period being measured is clean. The flagged days sit in the training history.',
+      })
+    }
   }
 
   const avg = result.summary.average

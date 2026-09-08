@@ -10,6 +10,13 @@
   let chartEl: HTMLDivElement
 
   const n = $derived(data.y.length)
+  const flaggedXs = $derived(
+    data.flaggedLabels.length
+      ? data.index.labels.flatMap((l, i) =>
+          data.flaggedLabels.includes(l) ? [data.index.xs[i]] : [],
+        )
+      : [],
+  )
   const preLength = $derived(config.t0 - config.preStart)
   const postLength = $derived(config.postEnd - config.t0 + 1)
 
@@ -31,6 +38,7 @@
         toX: data.index.xs[config.t0],
         color: token('--pre-shade'),
       },
+      marks: flaggedXs.length ? { xs: flaggedXs, color: token('--series-model-band') } : null,
       height: 200,
       onClickIdx: (idx) => {
         if (idx > config.preStart + 3 && idx <= config.postEnd) config.t0 = idx
@@ -44,6 +52,9 @@
 </script>
 
 <p class="muted">
+  {#if flaggedXs.length}
+    Shaded stripes are the {flaggedXs.length} days flagged in your file.
+  {/if}
   Click the chart to set when the intervention began. The shaded region is the
   pre-period the model trains on; everything after the dashed line is evaluated
   for impact.
