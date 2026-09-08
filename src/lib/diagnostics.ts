@@ -70,7 +70,21 @@ export function assess(
 ): DiagnosticItem[] {
   const items: DiagnosticItem[] = []
   const preLength = config.t0 - config.preStart
-  const nCov = Object.keys(data.covariates).length
+  // Count the covariates the engine actually fitted, not the ones supplied.
+  // Zero-variance columns are dropped at the runner boundary, so a single
+  // constant control would otherwise read as "has a control" everywhere below —
+  // silencing the no-control warning on a run that had none.
+  const dropped = result.dropped_covariates ?? []
+  const nCov = Object.keys(data.covariates).length - dropped.length
+
+  if (dropped.length) {
+    items.push({
+      id: 'dropped-covariates',
+      status: 'warn',
+      title: `${dropped.length === 1 ? 'Control series ignored' : `${dropped.length} control series ignored`}: ${dropped.join(', ')}`,
+      detail: `Never changes over the period the model trains on, so it carries no information and was dropped. Often a padded export, or a channel that was flat until it launched. Everything below counts ${nCov} usable control${nCov === 1 ? '' : 's'}.`,
+    })
+  }
 
   // Low R² mostly reflects noisy data, which the intervals already absorb by
   // widening (verified in the stress harness: misspecified-fit scenarios keep
