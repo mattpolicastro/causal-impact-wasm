@@ -10,9 +10,9 @@ would have let through ("protected FPR").
 most determines whether a result is trustworthy, and how much it matters is
 data-dependent rather than fixed: on one real daily conversion series the
 no-covariate false-positive rate fell from 38% to 4% between 0.01 and 0.02,
-while on `null-no-covariates` here no value rescues it — 68% at 0.01 and still
-22% at 0.1. Sweeping is the only way to see where the usable range sits for a
-given shape of data.
+while on `null-no-covariates` here no value rescues it — 65% at 0.01 and still
+11% at 0.1 (bayes; 73% and 13% for mle). Sweeping is the only way to see where
+the usable range sits for a given shape of data.
 
 Usage (from py/, with the pinned venv):
     .venv/bin/python stress/harness.py --reps 100 --out stress
