@@ -258,6 +258,17 @@ export function assess(
     }
   }
 
+  const excluded = data.excludedLabels ?? []
+  if (excluded.length) {
+    const shown = excluded.slice(0, 6).join(', ')
+    items.push({
+      id: 'excluded',
+      status: 'info',
+      title: `${excluded.length} flagged ${excluded.length === 1 ? 'day' : 'days'} excluded from the pre-period`,
+      detail: `${shown}${excluded.length > 6 ? `, and ${excluded.length - 6} more` : ''}. These rows were removed before fitting, so the pre-period is that many points shorter than the file. Flagged days in the measured window are never removed.`,
+    })
+  }
+
   items.push({
     id: 'assumptions',
     status: 'info',

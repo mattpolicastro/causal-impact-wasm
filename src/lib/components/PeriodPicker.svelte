@@ -1,11 +1,17 @@
 <script lang="ts">
   import { mountChart, theme, token } from '../charts.svelte'
+  import { preFlaggedLabels } from '../data'
   import type { AnalysisConfig, PreparedData } from '../types'
 
   let {
     data,
     config,
-  }: { data: PreparedData; config: AnalysisConfig } = $props()
+    excludeFlagged = $bindable(true),
+  }: {
+    data: PreparedData
+    config: AnalysisConfig
+    excludeFlagged?: boolean
+  } = $props()
 
   let chartEl: HTMLDivElement
 
@@ -17,7 +23,9 @@
         )
       : [],
   )
-  const preLength = $derived(config.t0 - config.preStart)
+  const preFlagged = $derived(preFlaggedLabels(data, config))
+  const nDropped = $derived(excludeFlagged ? preFlagged.length : 0)
+  const preLength = $derived(config.t0 - config.preStart - nDropped)
   const postLength = $derived(config.postEnd - config.t0 + 1)
 
   $effect(() => {
@@ -97,12 +105,43 @@
   </label>
   <p class="periods muted">
     Pre: {data.index.labels[config.preStart]} → {data.index.labels[config.t0 - 1]}
-    ({preLength} pts) · Post: {data.index.labels[config.t0]} →
-    {data.index.labels[config.postEnd]} ({postLength} pts)
+    ({preLength} pts{nDropped ? `, ${nDropped} excluded` : ''}) · Post:
+    {data.index.labels[config.t0]} → {data.index.labels[config.postEnd]}
+    ({postLength} pts)
   </p>
 </div>
 
+{#if preFlagged.length}
+  <label class="field checkbox">
+    <span>
+      <input type="checkbox" bind:checked={excludeFlagged} />
+      Exclude the {preFlagged.length}
+      flagged {preFlagged.length === 1 ? 'day' : 'days'} in the pre-period
+    </span>
+  </label>
+  <p class="muted note">
+    A flagged day the model trains on is treated as a real observation: it moves
+    the baseline being projected forward and inflates the noise the model
+    expects. Flagged days after the intervention are always kept — dropping days
+    from the measured window would change what the effect is an average over.
+  </p>
+{/if}
+
 <style>
+  .checkbox span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 14px;
+    padding: 6px 0;
+  }
+
+  .note {
+    margin: 2px 0 0;
+    max-width: 62ch;
+  }
+
   .periods {
     margin: 0;
     font-variant-numeric: tabular-nums;

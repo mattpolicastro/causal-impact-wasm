@@ -6,7 +6,7 @@
   import PeriodPicker from './lib/components/PeriodPicker.svelte'
   import PowerPlan from './lib/components/PowerPlan.svelte'
   import Results from './lib/components/Results.svelte'
-  import { makeRunPayload, prepare } from './lib/data'
+  import { excludePreFlagged, makeRunPayload, prepare } from './lib/data'
   import { placeboConfig } from './lib/diagnostics'
   import { cancelRun, engine, runAnalysis, warmUp } from './lib/engine.svelte'
   import type {
@@ -14,6 +14,7 @@
     AnalysisResult,
     Mapping,
     ParsedTable,
+    PreparedData,
   } from './lib/types'
 
   type PlaceboState = AnalysisResult | 'pending' | 'skipped' | { error: string }
@@ -23,6 +24,10 @@
   let config = $state<AnalysisConfig | null>(null)
   let result = $state<AnalysisResult | null>(null)
   let resultConfig = $state<AnalysisConfig | null>(null)
+  // What was actually fitted. Excluding flagged days shortens the series, so
+  // the result's points no longer line up with the file as loaded.
+  let resultData = $state<PreparedData | null>(null)
+  let excludeFlagged = $state(true)
   let placebo = $state<PlaceboState>('skipped')
   let runError = $state<string | null>(null)
   // Two different jobs: measuring an intervention that happened, and planning
@@ -46,6 +51,14 @@
   const prepareError = $derived(preparation?.error ?? null)
   const unit = $derived(prepared?.index.type === 'date' ? 'days' : 'points')
 
+  // The picker and the chart stay on the file as loaded; only the fit sees the
+  // shortened series.
+  const analysis = $derived.by(() => {
+    if (!prepared || !config) return null
+    if (!excludeFlagged) return { data: prepared, config, dropped: [] as string[] }
+    return excludePreFlagged(prepared, config)
+  })
+
   const stageLabel: Record<string, string> = {
     idle: 'engine off',
     'loading-runtime': 'loading Python runtime…',
@@ -58,6 +71,7 @@
     table = t
     mapping = m
     result = null
+    resultData = null
     runError = null
     const n = t.rows.length
     const t0 = Math.max(4, Math.floor(n * 0.7))
@@ -76,13 +90,15 @@
   }
 
   async function run() {
-    if (!prepared || !config) return
+    if (!analysis) return
     runError = null
     result = null
-    const snapshot = $state.snapshot(config)
+    const fitted = analysis.data
+    const snapshot = $state.snapshot(analysis.config) as AnalysisConfig
     try {
-      result = await runAnalysis(makeRunPayload(prepared, snapshot))
+      result = await runAnalysis(makeRunPayload(fitted, snapshot))
       resultConfig = snapshot
+      resultData = fitted
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (message !== 'Cancelled.' && !message.startsWith('Superseded')) {
@@ -98,7 +114,7 @@
     }
     placebo = 'pending'
     try {
-      placebo = await runAnalysis(makeRunPayload(prepared, placeboCfg))
+      placebo = await runAnalysis(makeRunPayload(fitted, placeboCfg))
     } catch (e) {
       placebo = { error: e instanceof Error ? e.message : String(e) }
     }
@@ -160,7 +176,7 @@
 {#if prepared && config && appMode === 'measure'}
   <section class="card">
     <h2>2 · Analysis design</h2>
-    <PeriodPicker data={prepared} {config} />
+    <PeriodPicker data={prepared} {config} bind:excludeFlagged />
     <hr />
     <ModelConfig {config} />
     <div class="runbar">
@@ -183,10 +199,10 @@
   </section>
 {/if}
 
-{#if result && prepared && resultConfig && appMode === 'measure'}
+{#if result && resultData && resultConfig && appMode === 'measure'}
   <section class="card">
     <h2>3 · Results</h2>
-    <Results data={prepared} config={resultConfig} {result} {placebo} />
+    <Results data={resultData} config={resultConfig} {result} {placebo} />
   </section>
 {/if}
 
