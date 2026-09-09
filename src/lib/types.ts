@@ -22,6 +22,8 @@ export interface PreparedData {
   covariates: Record<string, number[]>
   /** Labels flagged by an exclude column in the source file, if there was one. */
   flaggedLabels: string[]
+  /** Labels removed from the fit, so the result can say what it left out. */
+  excludedLabels?: string[]
 }
 
 export type Engine = 'bayes' | 'mle'

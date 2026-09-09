@@ -179,6 +179,59 @@ export function excludeLabels(data: PreparedData, labels: string[]): PreparedDat
 }
 
 /**
+ * Flagged rows sitting inside the training window.
+ *
+ * Only these can be dropped. A flagged day at or after the intervention is part
+ * of what the effect is averaged over, so removing it changes the question
+ * rather than cleaning the input — those are reported by the diagnostics panel
+ * and left in place.
+ */
+export function preFlaggedLabels(data: PreparedData, config: AnalysisConfig): string[] {
+  if (!data.flaggedLabels.length) return []
+  const flagged = new Set(data.flaggedLabels)
+  const out: string[] = []
+  for (let i = config.preStart; i < config.t0; i++) {
+    if (flagged.has(data.index.labels[i])) out.push(data.index.labels[i])
+  }
+  return out
+}
+
+/**
+ * Drop those rows and shift the period boundaries to match.
+ *
+ * A tracking error left in the training window is read as a real observation:
+ * it moves the level the model projects forward and inflates the noise scale it
+ * believes, which widens every interval that follows. Dropping the row is how
+ * you say there is no information for that day, which is what the flag means.
+ *
+ * On a real daily conversion series with two known tracking errors, dropping
+ * them held placebo false alarms at 14%; replacing them with a copied
+ * neighbouring day — an observation the model trusts like any other — raised
+ * that to 20%.
+ *
+ * Every dropped row lies in [preStart, t0), so preStart cannot move and the two
+ * later boundaries move back by however many were dropped.
+ */
+export function excludePreFlagged(
+  data: PreparedData,
+  config: AnalysisConfig,
+): { data: PreparedData; config: AnalysisConfig; dropped: string[] } {
+  const dropped = preFlaggedLabels(data, config)
+  if (!dropped.length) return { data, config, dropped }
+  const gone = new Set(dropped)
+  const reduced = excludeLabels(data, dropped)
+  return {
+    data: {
+      ...reduced,
+      flaggedLabels: data.flaggedLabels.filter((l) => !gone.has(l)),
+      excludedLabels: dropped,
+    },
+    config: { ...config, t0: config.t0 - dropped.length, postEnd: config.postEnd - dropped.length },
+    dropped,
+  }
+}
+
+/**
  * Days sitting far enough from the metric's usual level to distort a fit,
  * by median absolute deviation on the log scale so that the outliers do not
  * inflate the very threshold meant to catch them.
